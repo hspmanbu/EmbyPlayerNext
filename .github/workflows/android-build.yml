@@ -178,7 +178,7 @@ jobs:
           grep -q 'namespace = "com.embyplayernext.he"' app/build.gradle.kts
           grep -q 'applicationId = "com.embyplayernext.he"' app/build.gradle.kts
           grep -q 'versionCode = 124' app/build.gradle.kts
-          grep -q 'versionName = "2.3.0"' app/build.gradle.kts
+          grep -q 'versionName = "2.3.1"' app/build.gradle.kts
           grep -q 'android:screenOrientation="unspecified"' app/src/main/AndroidManifest.xml
           grep -q 'android.intent.category.LEANBACK_LAUNCHER' app/src/main/AndroidManifest.xml
           grep -q 'android.hardware.touchscreen' app/src/main/AndroidManifest.xml
