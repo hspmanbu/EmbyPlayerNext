@@ -1,0 +1,24 @@
+--- a/app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
++++ b/app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
+@@ -1,3 +1,5 @@
++@file:OptIn(androidx.media3.common.util.UnstableApi::class)
++
+ package com.embyplayernext.he.playback
+ 
+ import androidx.media3.common.AudioAttributes
+--- a/app/src/main/java/com/embyplayernext/he/playback/PlayerCache.kt
++++ b/app/src/main/java/com/embyplayernext/he/playback/PlayerCache.kt
+@@ -1,3 +1,5 @@
++@file:OptIn(androidx.media3.common.util.UnstableApi::class)
++
+ package com.embyplayernext.he.playback
+ 
+ import android.content.Context
+--- a/app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
++++ b/app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
+@@ -1,3 +1,5 @@
++@file:OptIn(androidx.media3.common.util.UnstableApi::class)
++
+ package com.embyplayernext.he.ui.screens
+ 
+ import android.app.Activity
