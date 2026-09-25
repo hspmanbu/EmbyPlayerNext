@@ -92,6 +92,13 @@ jobs:
           gzip -dc /tmp/ui-ux.patch.gz > /tmp/ui-ux.patch
           git apply --check /tmp/ui-ux.patch
           git apply /tmp/ui-ux.patch
+
+          cat .ci/player-feature-2.2.1.patch.b64.part00 .ci/player-feature-2.2.1.patch.b64.part01 .ci/player-feature-2.2.1.patch.b64.part02 .ci/player-feature-2.2.1.patch.b64.part03 > /tmp/player-feature.patch.b64
+          base64 --decode /tmp/player-feature.patch.b64 > /tmp/player-feature.patch.gz
+          gzip -dc /tmp/player-feature.patch.gz > /tmp/player-feature.patch
+          git apply --check /tmp/player-feature.patch
+          git apply /tmp/player-feature.patch
+
           grep -q 'versionName = "2.2.1"' app/build.gradle.kts
 
       - name: Set up JDK 17
