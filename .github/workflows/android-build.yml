@@ -28,7 +28,18 @@ jobs:
           test "$(stat -c%s source.zip)" = "44129"
           unzip -t source.zip
           unzip -o source.zip -d .
-          rm -f source.b64 source.zip EmbyPlayerNext-source-ci.zip
+          rm -f source.b64 EmbyPlayerNext-source-ci.zip
+
+      - name: Upload reconstructed source for review
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: EmbyPlayerNext-reconstructed-source
+          path: source.zip
+          retention-days: 1
+
+      - name: Clean reconstructed archive
+        run: rm -f source.zip
 
       - name: Apply UI and feature overlay
         shell: bash
