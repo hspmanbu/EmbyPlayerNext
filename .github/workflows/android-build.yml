@@ -3,7 +3,7 @@ name: Android Build
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [ main, audit/release-pass-source-20260925 ]
   pull_request:
 
 concurrency:
@@ -122,6 +122,18 @@ jobs:
           echo "0ca764ace29521dc4c17aaa8c4866bc6718a8f1d61b103cfa5e90341a741ee33  /tmp/experience-2.2.2-overlay.tgz" | sha256sum -c -
           tar -xzf /tmp/experience-2.2.2-overlay.tgz -C .
           grep -q 'versionName = "2.2.2"' app/build.gradle.kts
+
+      - name: Package release-pass source
+        shell: bash
+        run: |
+          tar -czf release-pass-source.tgz app build.gradle.kts settings.gradle.kts gradle.properties
+
+      - name: Upload release-pass source
+        uses: actions/upload-artifact@v4
+        with:
+          name: EmbyPlayerNext-release-pass-source
+          path: release-pass-source.tgz
+          retention-days: 1
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
