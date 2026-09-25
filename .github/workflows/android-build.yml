@@ -99,6 +99,7 @@ jobs:
           git apply --check /tmp/player-feature.patch
           git apply /tmp/player-feature.patch
           patch -p1 < .ci/player-feature-fix1.patch
+          gzip -dc .ci/player-ui-correction-2.2.1.patch.gz | patch -p1
 
           grep -q 'versionName = "2.2.1"' app/build.gradle.kts
 
