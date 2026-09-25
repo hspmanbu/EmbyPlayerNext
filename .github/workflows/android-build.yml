@@ -98,6 +98,7 @@ jobs:
           gzip -dc /tmp/player-feature.patch.gz > /tmp/player-feature.patch
           git apply --check /tmp/player-feature.patch
           git apply /tmp/player-feature.patch
+          patch -p1 < .ci/player-feature-fix1.patch
 
           grep -q 'versionName = "2.2.1"' app/build.gradle.kts
 
