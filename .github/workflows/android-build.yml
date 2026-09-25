@@ -3,7 +3,7 @@ name: Android Build
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [ main, audit/tv-codec-source-20260926 ]
   pull_request:
 
 concurrency:
@@ -185,6 +185,18 @@ jobs:
           test -s app/src/main/res/drawable/ic_launcher_foreground.xml
           test -s app/ci-debug.keystore
           ! grep -R -n 'com\.aistudio\.embyplayer\|jia\.hesip\|lac\.hesip\|emby-nginx' app/src/main app/build.gradle.kts
+
+      - name: Export final 2.3.1 source
+        shell: bash
+        run: |
+          tar -czf final-2.3.1-source.tgz app build.gradle.kts settings.gradle.kts gradle.properties
+
+      - name: Upload final 2.3.1 source
+        uses: actions/upload-artifact@v4
+        with:
+          name: EmbyPlayerNext-final-2.3.1-source
+          path: final-2.3.1-source.tgz
+          retention-days: 1
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
