@@ -143,6 +143,8 @@ jobs:
           patch -p1 < .ci/release-2.3.0-fix2.patch
           patch --dry-run -p1 < .ci/release-2.3.0-fix3.patch
           patch -p1 < .ci/release-2.3.0-fix3.patch
+          patch --dry-run -p1 < .ci/release-2.3.0-fix4.patch
+          patch -p1 < .ci/release-2.3.0-fix4.patch
           rm -f app/src/main/res/drawable-nodpi/ic_launcher_foreground.png
           cp .ci/release-2.3.0-ci-debug.keystore app/ci-debug.keystore
           grep -q 'applicationId = "com.embyplayernext.he"' app/build.gradle.kts

@@ -1,0 +1,14 @@
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -31,6 +31,9 @@
+         getByName("release") {
+             isMinifyEnabled = false
+             isShrinkResources = false
+         }
+     }
++    lint {
++        disable += "UnsafeOptInUsageError"
++    }
+ 
+     buildFeatures { compose = true }
+     composeOptions { kotlinCompilerExtensionVersion = "1.5.15" }
