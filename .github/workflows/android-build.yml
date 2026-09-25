@@ -82,6 +82,7 @@ jobs:
         shell: bash
         run: |
           gzip -dc .ci/stability-2.2.1.patch.gz | patch -p0
+          gzip -dc .ci/detail-race-2.2.1.patch.gz | patch -p0
           grep -q 'versionName = "2.2.1"' app/build.gradle.kts
 
       - name: Set up JDK 17
