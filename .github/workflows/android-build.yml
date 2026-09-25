@@ -63,6 +63,13 @@ jobs:
               'Text(descriptor.item.name,color=Color.White,modifier=Modifier.weight(1f));Text("网速: $networkSpeed",color=Color.White,style=MaterialTheme.typography.bodySmall)'
           )
           p.write_text(s)
+
+          settings = Path("app/src/main/java/com/aistudio/embyplayer/ui/screens/SettingsScreen.kt")
+          if settings.exists():
+              ss = settings.read_text()
+              if "import androidx.compose.foundation.lazy.LazyColumn" not in ss:
+                  ss = ss.replace("import androidx.compose.foundation.layout.*\\n", "import androidx.compose.foundation.layout.*\\nimport androidx.compose.foundation.lazy.LazyColumn\\n")
+              settings.write_text(ss)
           PY
 
       - name: Set up JDK 17
