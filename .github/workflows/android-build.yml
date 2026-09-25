@@ -158,15 +158,26 @@ jobs:
           rm -f app/src/main/res/drawable-nodpi/ic_launcher_foreground.png
           cp .ci/release-2.3.0-ci-debug.keystore app/ci-debug.keystore
           grep -q 'applicationId = "com.embyplayernext.he"' app/build.gradle.kts
-          grep -q 'versionName = "2.3.0"' app/build.gradle.kts
+          grep -q 'versionName = "2.3.1"' app/build.gradle.kts
           ! grep -R -n 'com\.aistudio\.embyplayer\|jia\.hesip\|lac\.hesip\|emby-nginx' app/src/main app/build.gradle.kts
 
-      - name: Verify 2.3.0 release-pass metadata
+      - name: Apply 2.3.1 TV and playback pass
+        shell: bash
+        run: |
+          base64 --decode .ci/release-2.3.1.patch.gz.b64 > /tmp/release-2.3.1.patch.gz
+          gzip -dc /tmp/release-2.3.1.patch.gz > /tmp/release-2.3.1.patch
+          echo "e439c4999930c3940340fe082a8cffbb49a0cdda60661ed719499dbebd40ed31  /tmp/release-2.3.1.patch" | sha256sum -c -
+          patch --dry-run -p1 < /tmp/release-2.3.1.patch
+          patch -p1 < /tmp/release-2.3.1.patch
+          grep -q 'versionCode = 124' app/build.gradle.kts
+          grep -q 'versionName = "2.3.1"' app/build.gradle.kts
+
+      - name: Verify 2.3.1 release-pass metadata
         shell: bash
         run: |
           grep -q 'namespace = "com.embyplayernext.he"' app/build.gradle.kts
           grep -q 'applicationId = "com.embyplayernext.he"' app/build.gradle.kts
-          grep -q 'versionCode = 123' app/build.gradle.kts
+          grep -q 'versionCode = 124' app/build.gradle.kts
           grep -q 'versionName = "2.3.0"' app/build.gradle.kts
           grep -q 'android:screenOrientation="unspecified"' app/src/main/AndroidManifest.xml
           grep -q 'android.intent.category.LEANBACK_LAUNCHER' app/src/main/AndroidManifest.xml
@@ -211,7 +222,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.0-debug
+          name: EmbyPlayerNext-v2.3.1-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: ignore
           retention-days: 14
@@ -220,7 +231,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.0-release-unsigned
+          name: EmbyPlayerNext-v2.3.1-release-unsigned
           path: app/build/outputs/apk/release/app-release-unsigned.apk
           if-no-files-found: ignore
           retention-days: 14
