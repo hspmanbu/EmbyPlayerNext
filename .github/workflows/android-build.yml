@@ -3,7 +3,7 @@ name: Android Build
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [ main, audit/final-source-snapshot-20260925 ]
   pull_request:
 
 permissions:
@@ -77,6 +77,18 @@ jobs:
                   rows.insert(insert_at, lazy_import)
                   ss = "\n".join(rows) + "\n"
               settings.write_text(ss)
+
+      - name: Package final prepared source
+        shell: bash
+        run: |
+          tar -czf final-prepared-source.tgz app build.gradle.kts settings.gradle.kts gradle.properties
+
+      - name: Upload final prepared source
+        uses: actions/upload-artifact@v4
+        with:
+          name: EmbyPlayerNext-final-prepared-source
+          path: final-prepared-source.tgz
+          retention-days: 1
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
