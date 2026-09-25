@@ -108,7 +108,7 @@ fun HomeScreen(
                 item {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(end = 6.dp)) {
                         items(resume, key = { it.id }) { i ->
-                            ResumeCard(i, imageFor(i, "Backdrop") ?: imageFor(i, "Primary")) { onOpenItem(i) }
+                            ResumeCard(i, imageFor(i, "Backdrop") ?: imageFor(i, "Primary"), onClick = { onOpenItem(i) })
                         }
                     }
                 }
