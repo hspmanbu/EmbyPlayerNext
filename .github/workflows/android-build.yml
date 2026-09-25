@@ -30,6 +30,14 @@ jobs:
           unzip -o source.zip -d .
           rm -f source.b64 source.zip EmbyPlayerNext-source-ci.zip
 
+      - name: Apply UI and feature overlay
+        shell: bash
+        run: |
+          test -d .ci/overlay
+          cp -a .ci/overlay/. .
+          test -f app/src/main/java/com/aistudio/embyplayer/ui/screens/SearchScreen.kt
+          grep -q 'versionName = "2.1.0"' app/build.gradle.kts
+
       - name: Apply source fixes
         shell: bash
         run: |
@@ -75,7 +83,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-debug
+          name: EmbyPlayerNext-v2.1.0-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: ignore
           retention-days: 14
