@@ -194,6 +194,13 @@ jobs:
           grep -q 'versionCode = 126' app/build.gradle.kts
           grep -q 'versionName = "2.3.3"' app/build.gradle.kts
 
+      - name: Apply 2.3.3 codec capability API fix
+        shell: bash
+        run: |
+          echo "858aa28cf6e9f3152da1422a75f6bc67e0a4fe2462be33eed0ae1599cfeefe2a  .ci/release-2.3.3-fix1.patch" | sha256sum -c -
+          patch --dry-run -p1 < .ci/release-2.3.3-fix1.patch
+          patch -p1 < .ci/release-2.3.3-fix1.patch
+
       - name: Verify 2.3.3 release-pass metadata
         shell: bash
         run: |

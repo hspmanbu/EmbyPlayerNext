@@ -1,0 +1,11 @@
+--- a/app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
++++ b/app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
+@@ -177,7 +177,7 @@
+                             val perf = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                 video.supportedPerformancePoints?.joinToString()?.ifBlank { "empty" } ?: "null"
+                             } else "n/a"
+-                            val uhd60 = runCatching { video.isSizeAndRateSupported(3840, 2160, 60.0) }.getOrDefault(false)
++                            val uhd60 = runCatching { video.areSizeAndRateSupported(3840, 2160, 60.0) }.getOrDefault(false)
+                             logger.log("CodecCaps", "name=${info.name} mime=$mime $flags maxInstances=${caps.maxSupportedInstances} widths=${video.supportedWidths} heights=${video.supportedHeights} fps=${video.supportedFrameRates} align=${video.widthAlignment}x${video.heightAlignment} UHD60=$uhd60 profiles=$profiles colors=$colors perf=$perf")
+                         }.onFailure { logger.log("CodecCaps", "name=${info.name} mime=$mime error=${it.message}") }
+                     }
