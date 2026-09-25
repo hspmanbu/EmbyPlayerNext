@@ -3,7 +3,7 @@ name: Android Build
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [ main, audit/player-fix-current-20260925 ]
   pull_request:
 
 concurrency:
@@ -101,6 +101,18 @@ jobs:
           patch -p1 < .ci/player-feature-fix1.patch
 
           grep -q 'versionName = "2.2.1"' app/build.gradle.kts
+
+      - name: Package final prepared source
+        shell: bash
+        run: |
+          tar -czf final-prepared-source.tgz app build.gradle.kts settings.gradle.kts gradle.properties
+
+      - name: Upload final prepared source
+        uses: actions/upload-artifact@v4
+        with:
+          name: EmbyPlayerNext-final-prepared-source-playerfix
+          path: final-prepared-source.tgz
+          retention-days: 1
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
