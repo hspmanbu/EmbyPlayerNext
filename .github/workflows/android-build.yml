@@ -67,10 +67,16 @@ jobs:
           settings = Path("app/src/main/java/com/aistudio/embyplayer/ui/screens/SettingsScreen.kt")
           if settings.exists():
               ss = settings.read_text()
-              if "import androidx.compose.foundation.lazy.LazyColumn" not in ss:
-                  ss = ss.replace("import androidx.compose.foundation.layout.*\\n", "import androidx.compose.foundation.layout.*\\nimport androidx.compose.foundation.lazy.LazyColumn\\n")
+              lazy_import = "import androidx.compose.foundation.lazy.LazyColumn"
+              if lazy_import not in ss:
+                  rows = ss.splitlines()
+                  package_index = next((i for i, row in enumerate(rows) if row.startswith("package ")), -1)
+                  insert_at = package_index + 1
+                  while insert_at < len(rows) and rows[insert_at].strip() == "":
+                      insert_at += 1
+                  rows.insert(insert_at, lazy_import)
+                  ss = "\n".join(rows) + "\n"
               settings.write_text(ss)
-          PY
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
