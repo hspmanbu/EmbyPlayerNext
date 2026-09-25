@@ -28,26 +28,24 @@ jobs:
           test "$(stat -c%s source.zip)" = "44129"
           unzip -t source.zip
           unzip -o source.zip -d .
-          rm -f source.b64 EmbyPlayerNext-source-ci.zip
+          rm -f source.b64 source.zip EmbyPlayerNext-source-ci.zip
 
-      - name: Upload reconstructed source for review
-        if: github.event_name == 'pull_request'
-        uses: actions/upload-artifact@v4
-        with:
-          name: EmbyPlayerNext-reconstructed-source
-          path: source.zip
-          retention-days: 1
-
-      - name: Clean reconstructed archive
-        run: rm -f source.zip
+      - name: Apply data and API rework
+        shell: bash
+        run: |
+          rm -rf .ci/rework
+          mkdir -p .ci/rework
+          tar -xzf .ci/rework_pack.tgz -C .ci/rework
+          patch -p0 < .ci/rework/api-rework.patch
 
       - name: Apply UI and feature overlay
         shell: bash
         run: |
           test -d .ci/overlay
           cp -a .ci/overlay/. .
-          test -f app/src/main/java/com/aistudio/embyplayer/ui/screens/SearchScreen.kt
-          grep -q 'versionName = "2.1.0"' app/build.gradle.kts
+          cp -a .ci/rework/app/. app/
+          test -f app/src/main/java/com/aistudio/embyplayer/ui/screens/LibrariesScreen.kt
+          grep -q 'versionName = "2.2.0"' app/build.gradle.kts
 
       - name: Apply source fixes
         shell: bash
@@ -94,7 +92,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.1.0-debug
+          name: EmbyPlayerNext-v2.2.0-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: ignore
           retention-days: 14
