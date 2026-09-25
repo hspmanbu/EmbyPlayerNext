@@ -172,13 +172,24 @@ jobs:
           grep -q 'versionCode = 124' app/build.gradle.kts
           grep -q 'versionName = "2.3.1"' app/build.gradle.kts
 
-      - name: Verify 2.3.1 release-pass metadata
+      - name: Apply 2.3.2 TV dialog and Rockchip decoder fixes
+        shell: bash
+        run: |
+          base64 --decode .ci/release-2.3.2.patch.gz.b64 > /tmp/release-2.3.2.patch.gz
+          gzip -dc /tmp/release-2.3.2.patch.gz > /tmp/release-2.3.2.patch
+          echo "c39ae05f361499d5ead46ea80a7233babac89d7416f155a303e58b575b1d82d5  /tmp/release-2.3.2.patch" | sha256sum -c -
+          patch --dry-run -p1 < /tmp/release-2.3.2.patch
+          patch -p1 < /tmp/release-2.3.2.patch
+          grep -q 'versionCode = 125' app/build.gradle.kts
+          grep -q 'versionName = "2.3.2"' app/build.gradle.kts
+
+      - name: Verify 2.3.2 release-pass metadata
         shell: bash
         run: |
           grep -q 'namespace = "com.embyplayernext.he"' app/build.gradle.kts
           grep -q 'applicationId = "com.embyplayernext.he"' app/build.gradle.kts
-          grep -q 'versionCode = 124' app/build.gradle.kts
-          grep -q 'versionName = "2.3.1"' app/build.gradle.kts
+          grep -q 'versionCode = 125' app/build.gradle.kts
+          grep -q 'versionName = "2.3.2"' app/build.gradle.kts
           grep -q 'android:screenOrientation="unspecified"' app/src/main/AndroidManifest.xml
           grep -q 'android.intent.category.LEANBACK_LAUNCHER' app/src/main/AndroidManifest.xml
           grep -q 'android.hardware.touchscreen' app/src/main/AndroidManifest.xml
@@ -222,7 +233,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.1-debug
+          name: EmbyPlayerNext-v2.3.2-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: ignore
           retention-days: 14
@@ -231,7 +242,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.1-release-unsigned
+          name: EmbyPlayerNext-v2.3.2-release-unsigned
           path: app/build/outputs/apk/release/app-release-unsigned.apk
           if-no-files-found: ignore
           retention-days: 14
