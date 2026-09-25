@@ -143,8 +143,18 @@ jobs:
           patch -p1 < .ci/release-2.3.0-fix2.patch
           patch --dry-run -p1 < .ci/release-2.3.0-fix3.patch
           patch -p1 < .ci/release-2.3.0-fix3.patch
-          patch --dry-run -p1 < .ci/release-2.3.0-fix4.patch
-          patch -p1 < .ci/release-2.3.0-fix4.patch
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("app/build.gradle.kts")
+          s = p.read_text()
+          marker = "    buildFeatures { compose = true }"
+          lint_block = '    lint {\n        disable += "UnsafeOptInUsageError"\n    }\n\n'
+          if 'disable += "UnsafeOptInUsageError"' not in s:
+              if marker not in s:
+                  raise SystemExit("buildFeatures marker missing")
+              s = s.replace(marker, lint_block + marker)
+          p.write_text(s)
+          PY
           rm -f app/src/main/res/drawable-nodpi/ic_launcher_foreground.png
           cp .ci/release-2.3.0-ci-debug.keystore app/ci-debug.keystore
           grep -q 'applicationId = "com.embyplayernext.he"' app/build.gradle.kts
