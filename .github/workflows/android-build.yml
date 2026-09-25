@@ -136,6 +136,9 @@ jobs:
           gzip -dc .ci/release-2.3.0.patch.gz > /tmp/release-2.3.0.patch
           patch --dry-run -p1 < /tmp/release-2.3.0.patch
           patch -p1 < /tmp/release-2.3.0.patch
+          gzip -dc .ci/release-2.3.0-fix1.patch.gz > /tmp/release-2.3.0-fix1.patch
+          patch --dry-run -p1 < /tmp/release-2.3.0-fix1.patch
+          patch -p1 < /tmp/release-2.3.0-fix1.patch
           cp .ci/release-2.3.0-icon.png app/src/main/res/drawable-nodpi/ic_launcher_foreground.png
           cp .ci/release-2.3.0-ci-debug.keystore app/ci-debug.keystore
           grep -q 'applicationId = "com.embyplayernext.he"' app/build.gradle.kts
