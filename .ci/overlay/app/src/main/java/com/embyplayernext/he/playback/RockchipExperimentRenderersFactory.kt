@@ -9,13 +9,16 @@ import android.os.Handler
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
 import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.Renderer
 import androidx.media3.exoplayer.mediacodec.MediaCodecAdapter
+import androidx.media3.exoplayer.mediacodec.MediaCodecInfo
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.video.MediaCodecVideoRenderer
 import androidx.media3.exoplayer.video.VideoRendererEventListener
 import com.embyplayernext.he.util.DiagnosticsLogger
 import java.util.ArrayList
+import java.util.concurrent.atomic.AtomicLong
 
 class RockchipExperimentRenderersFactory(
     context: Context,
@@ -86,6 +89,7 @@ private class RockchipExperimentVideoRenderer(
 ) {
     private val appContext = context.applicationContext
     private val prefs = appContext.getSharedPreferences("emby_player_prefs", Context.MODE_PRIVATE)
+    private val codecGeneration = AtomicLong(0L)
 
     private fun experimentMode(): String {
         if (!prefs.getBoolean("hardware_compatibility_mode", false)) return "default"
@@ -94,6 +98,29 @@ private class RockchipExperimentVideoRenderer(
 
     private fun isTarget(format: Format): Boolean =
         format.sampleMimeType.equals(MimeTypes.VIDEO_H265, ignoreCase = true)
+
+    override fun canReuseCodec(
+        codecInfo: MediaCodecInfo,
+        oldFormat: Format,
+        newFormat: Format,
+        isAdaptiveFormatChange: Boolean,
+    ): DecoderReuseEvaluation {
+        val mode = experimentMode()
+        if (isTarget(newFormat) && mode != "default") {
+            logger.log(
+                "RKCodecReuse",
+                "mode=$mode decoder=${codecInfo.name} forced=false old=${oldFormat.width}x${oldFormat.height}@${oldFormat.frameRate} new=${newFormat.width}x${newFormat.height}@${newFormat.frameRate} adaptive=$isAdaptiveFormatChange",
+            )
+            return DecoderReuseEvaluation(
+                codecInfo.name,
+                oldFormat,
+                newFormat,
+                DecoderReuseEvaluation.REUSE_RESULT_NO,
+                DecoderReuseEvaluation.DISCARD_REASON_APP_OVERRIDE,
+            )
+        }
+        return super.canReuseCodec(codecInfo, oldFormat, newFormat, isAdaptiveFormatChange)
+    }
 
     override fun getCodecOperatingRateV23(
         targetPlaybackSpeed: Float,
@@ -157,9 +184,10 @@ private class RockchipExperimentVideoRenderer(
             }
         }
 
+        val generation = codecGeneration.incrementAndGet()
         logger.log(
             "RKMediaFormat",
-            "mode=$mode sdk=${Build.VERSION.SDK_INT} mime=$codecMimeType input=${format.width}x${format.height}@${format.frameRate} codecRate=$codecOperatingRate mediaFormat=$mediaFormat",
+            "generation=$generation mode=$mode sdk=${Build.VERSION.SDK_INT} mime=$codecMimeType input=${format.width}x${format.height}@${format.frameRate} codecRate=$codecOperatingRate mediaFormat=$mediaFormat",
         )
         return mediaFormat
     }
