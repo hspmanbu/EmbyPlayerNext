@@ -165,7 +165,7 @@ fun LibVlcPlayerScreen(
         val oldGeneration = playerGeneration
         logger.log(
             "LibVLCSeek",
-            "recreate begin item=${descriptor.item.id} targetMs=$bounded oldGeneration=$oldGeneration rockchip=$isRockchip",
+            "restart begin item=${descriptor.item.id} recreate=true targetMs=$bounded oldGeneration=$oldGeneration rockchip=$isRockchip",
         )
         runCatching { oldPlayer.setEventListener(null) }
         runCatching { oldPlayer.stop() }
