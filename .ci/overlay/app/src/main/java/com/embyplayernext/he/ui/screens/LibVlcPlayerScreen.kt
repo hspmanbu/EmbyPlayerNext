@@ -1,6 +1,7 @@
 package com.embyplayernext.he.ui.screens
 
 import android.net.Uri
+import android.net.TrafficStats
 import android.view.SurfaceView
 import android.view.View
 import androidx.activity.compose.BackHandler
@@ -77,6 +78,7 @@ fun LibVlcPlayerScreen(
     var controlsVisible by remember { mutableStateOf(true) }
     var locked by remember { mutableStateOf(false) }
     var aspectMode by remember { mutableStateOf(0) }
+    var networkSpeed by remember { mutableStateOf("0.00 MB/s") }
     var audioTracks by remember { mutableStateOf<List<PlayerTrackOption>>(emptyList()) }
     var subtitleTracks by remember { mutableStateOf<List<PlayerTrackOption>>(emptyList()) }
 
@@ -269,6 +271,20 @@ fun LibVlcPlayerScreen(
         }
     }
 
+    LaunchedEffect(Unit) {
+        var last = TrafficStats.getUidRxBytes(android.os.Process.myUid())
+        var lastTime = System.currentTimeMillis()
+        while (isActive) {
+            delay(1000)
+            val now = TrafficStats.getUidRxBytes(android.os.Process.myUid())
+            val nowTime = System.currentTimeMillis()
+            val bps = (now - last) * 1000.0 / (nowTime - lastTime).coerceAtLeast(1L)
+            networkSpeed = "%.2f MB/s".format(bps / 1024.0 / 1024.0)
+            last = now
+            lastTime = nowTime
+        }
+    }
+
     BackHandler { if (!locked) exitPlayer() }
 
     Box(Modifier.fillMaxSize().background(Color.Black).pointerInput(locked) { detectTapGestures(onTap = { if (!locked) controlsVisible = !controlsVisible }) }) {
@@ -289,8 +305,10 @@ fun LibVlcPlayerScreen(
             positionMs = if (dragging) dragPositionMs.toLong() else positionMs,
             durationMs = durationMs,
             isPlaying = playing,
+            networkSpeed = networkSpeed,
             rewindSeconds = config.rewindSeconds,
             forwardSeconds = config.forwardSeconds,
+            gestureSeekSeconds = config.gestureSeekSeconds,
             playbackSpeed = speed,
             audioTracks = audioTracks,
             subtitleTracks = subtitleTracks,
@@ -313,6 +331,7 @@ fun LibVlcPlayerScreen(
                 }
                 logger.log("LibVLC", "subtitleTrack item=${descriptor.item.id} id=$id")
             },
+            onSetVisible = { controlsVisible = it },
             onAspect = {
                 aspectMode = (aspectMode + 1) % 3
                 runCatching {
