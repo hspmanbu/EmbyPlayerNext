@@ -181,7 +181,8 @@ fun LibVlcPlayerScreen(
         )
     }
 
-    // experiment-legacy-marker: 2.3.14 compatibility; 2.3.15 uses full player recreation on RK Direct seek.\n    fun seekTo(targetMs: Long) {
+    // experiment-legacy-marker: 2.3.14 compatibility; 2.3.15 uses full player recreation on RK Direct seek.
+    fun seekTo(targetMs: Long) {
         val bounded = if (durationMs > 0) targetMs.coerceIn(0L, durationMs) else targetMs.coerceAtLeast(0L)
         if (
             isRockchip &&
