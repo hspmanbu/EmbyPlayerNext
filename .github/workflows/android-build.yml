@@ -234,6 +234,27 @@ jobs:
           test -s app/ci-debug.keystore
           ! grep -R -n 'com\.aistudio\.embyplayer\|jia\.hesip\|lac\.hesip\|emby-nginx' app/src/main app/build.gradle.kts
 
+      - name: Apply 2.3.5 Dangbei startup compatibility
+        shell: bash
+        run: |
+          git apply --check .ci/release-2.3.5-dangbei-startup.patch
+          git apply .ci/release-2.3.5-dangbei-startup.patch
+          grep -q 'versionCode = 128' app/build.gradle.kts
+          grep -q 'versionName = "2.3.5"' app/build.gradle.kts
+          grep -q 'VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
+          grep -q 'dangbeiStartupCompat' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
+          grep -q 'CodecInput' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
+
+      - name: Verify 2.3.5 startup-path metadata
+        shell: bash
+        run: |
+          grep -q 'namespace = "com.embyplayernext.he"' app/build.gradle.kts
+          grep -q 'applicationId = "com.embyplayernext.he"' app/build.gradle.kts
+          grep -q 'versionCode = 128' app/build.gradle.kts
+          grep -q 'versionName = "2.3.5"' app/build.gradle.kts
+          grep -q 'VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
+          grep -q 'CodecInput' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
+
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
@@ -270,7 +291,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.4-debug
+          name: EmbyPlayerNext-v2.3.5-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: ignore
           retention-days: 14
@@ -279,7 +300,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.4-release-unsigned
+          name: EmbyPlayerNext-v2.3.5-release-unsigned
           path: app/build/outputs/apk/release/app-release-unsigned.apk
           if-no-files-found: ignore
           retention-days: 14
