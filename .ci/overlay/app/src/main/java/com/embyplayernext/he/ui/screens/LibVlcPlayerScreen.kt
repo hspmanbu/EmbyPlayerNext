@@ -132,6 +132,21 @@ fun LibVlcPlayerScreen(
         return parsed.buildUpon().appendQueryParameter("api_key", config.accessToken).build().toString()
     }
 
+    fun configureVlcMedia(media: Media, reason: String) {
+        val copyMode = config.vlcHardwareMode.equals("copy", ignoreCase = true)
+        media.setHWDecoderEnabled(true, true)
+        if (copyMode) {
+            media.addOption(":no-mediacodec-dr")
+            media.addOption(":no-omxil-dr")
+        }
+        media.addOption(":network-caching=1500")
+        media.addOption(":file-caching=1500")
+        logger.log(
+            "LibVLCMode",
+            "mode=${if (copyMode) "copy" else "direct"} reason=$reason hwDecoder=true directRendering=${!copyMode} item=${descriptor.item.id}",
+        )
+    }
+
     fun directSeekTo(targetMs: Long, reason: String) {
         val bounded = if (durationMs > 0) targetMs.coerceIn(0L, durationMs) else targetMs.coerceAtLeast(0L)
         runCatching { player.setTime(bounded) }
@@ -158,9 +173,7 @@ fun LibVlcPlayerScreen(
             if (surface.width > 0 && surface.height > 0) vout.setWindowSize(surface.width, surface.height)
         }
         val media = Media(libVlc, Uri.parse(playbackUrl()))
-        media.setHWDecoderEnabled(true, true)
-        media.addOption(":network-caching=1500")
-        media.addOption(":file-caching=1500")
+        configureVlcMedia(media, "restart")
         player.media = media
         media.release()
         player.play()
@@ -168,8 +181,9 @@ fun LibVlcPlayerScreen(
 
     fun seekTo(targetMs: Long) {
         val bounded = if (durationMs > 0) targetMs.coerceIn(0L, durationMs) else targetMs.coerceAtLeast(0L)
-        if (isRockchip && started && !ended) restartDecoderAt(bounded)
-        else directSeekTo(bounded, if (isRockchip) "startup" else "normal")
+        // 2.3.14 A/B: Direct and Copy use the same plain setTime() seek path.
+        // This keeps the only intended variable between the two VLC modes the direct-rendering option.
+        directSeekTo(bounded, "experiment-" + config.vlcHardwareMode)
     }
 
     fun applyAspect() {
@@ -367,12 +381,10 @@ fun LibVlcPlayerScreen(
         ended = false
         buffering = true
         val media = Media(libVlc, Uri.parse(playbackUrl()))
-        media.setHWDecoderEnabled(true, true)
-        media.addOption(":network-caching=1500")
-        media.addOption(":file-caching=1500")
+        configureVlcMedia(media, "initial")
         logger.log(
             "LibVLC",
-            "prepare item=${descriptor.item.id} method=${descriptor.playMethod} hwDecoder=true force=true requestedMs=${descriptor.initialPositionMs} url=${descriptor.streamUrl.substringBefore('?')}",
+            "prepare item=${descriptor.item.id} method=${descriptor.playMethod} hwDecoder=true force=true vlcMode=${config.vlcHardwareMode} requestedMs=${descriptor.initialPositionMs} url=${descriptor.streamUrl.substringBefore('?')}",
         )
         player.media = media
         media.release()
