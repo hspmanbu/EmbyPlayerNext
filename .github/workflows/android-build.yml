@@ -204,7 +204,14 @@ jobs:
       - name: Apply 2.3.4 Rockchip safe-resume and diagnostics
         shell: bash
         run: |
-          base64 --decode .ci/release-2.3.4.patch.gz.b64 > /tmp/release-2.3.4.patch.gz
+          cat \
+            .ci/release-2.3.4.patch.gz.b64.part00 \
+            .ci/release-2.3.4.patch.gz.b64.part01 \
+            .ci/release-2.3.4.patch.gz.b64.part02 \
+            .ci/release-2.3.4.patch.gz.b64.part03 \
+            .ci/release-2.3.4.patch.gz.b64.part04 \
+            > /tmp/release-2.3.4.patch.gz.b64
+          base64 --decode /tmp/release-2.3.4.patch.gz.b64 > /tmp/release-2.3.4.patch.gz
           gzip -dc /tmp/release-2.3.4.patch.gz > /tmp/release-2.3.4.patch
           echo "a2d4517e4eb796c4fc461a886f4aec3948de6b1ee74bc5435de68afffa4fe599  /tmp/release-2.3.4.patch" | sha256sum -c -
           patch --dry-run -p1 < /tmp/release-2.3.4.patch
