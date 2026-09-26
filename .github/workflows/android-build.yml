@@ -390,6 +390,23 @@ jobs:
           grep -q 'DirectCodecSpeed' app/src/main/java/com/embyplayernext/he/ui/screens/DirectCodecDiagnosticScreen.kt
           grep -q 'SpeedPickerPage' app/src/main/java/com/embyplayernext/he/ui/screens/DirectCodecDiagnosticScreen.kt
           grep -q 'playFocusRequester' app/src/main/java/com/embyplayernext/he/ui/screens/DirectCodecDiagnosticScreen.kt
+      - name: Apply 2.3.17 DirectCodec-style Media3 and ijk validation
+        shell: bash
+        run: |
+          cp .ci/overlay/app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt
+          cp .ci/overlay/app/src/main/java/com/embyplayernext/he/ui/screens/IjkPlayerDiagnosticScreen.kt app/src/main/java/com/embyplayernext/he/ui/screens/IjkPlayerDiagnosticScreen.kt
+          python3 .ci/release-2.3.17-renderer-ijk-cleanup.py
+          grep -q 'versionCode = 140' app/build.gradle.kts
+          grep -q 'versionName = "2.3.17"' app/build.gradle.kts
+          grep -q 'directcodec_renderer' app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt
+          grep -q 'RKDirectRenderer' app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt
+          grep -q 'IjkPlayerDiagnosticScreen' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
+          grep -q 'io.github.superjianpang:ijkplayer-java:0.0.2' app/build.gradle.kts
+          grep -q 'io.github.superjianpang:ijkplayer-arm64:0.0.2' app/build.gradle.kts
+          ! grep -q 'org.videolan.android:libvlc-all' app/build.gradle.kts
+          ! test -e app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
+          ! grep -R -n 'LibVlcPlayerScreen\|vlcHardwareMode' app/src/main app/build.gradle.kts
+
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
@@ -426,7 +443,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.16-arm64-debug
+          name: EmbyPlayerNext-v2.3.17-arm64-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: ignore
           retention-days: 14
@@ -435,7 +452,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.16-arm64-release-unsigned
+          name: EmbyPlayerNext-v2.3.17-arm64-release-unsigned
           path: app/build/outputs/apk/release/app-release-unsigned.apk
           if-no-files-found: ignore
           retention-days: 14
