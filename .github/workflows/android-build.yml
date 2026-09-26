@@ -314,6 +314,18 @@ jobs:
           grep -q 'TrackSelectionOverride' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
           grep -q 'player.audioTracks' app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
           grep -q '选择播放倍速' app/src/main/java/com/embyplayernext/he/ui/screens/SharedPlayerControls.kt
+      - name: Apply 2.3.11 legacy player UI restoration
+        shell: bash
+        run: |
+          cp .ci/overlay/app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
+          cp .ci/overlay/app/src/main/java/com/embyplayernext/he/ui/screens/SharedPlayerControls.kt app/src/main/java/com/embyplayernext/he/ui/screens/SharedPlayerControls.kt
+          python3 .ci/release-2.3.11-legacy-ui.py
+          grep -q 'versionCode = 134' app/build.gradle.kts
+          grep -q 'versionName = "2.3.11"' app/build.gradle.kts
+          grep -q 'surfaceGesturesEnabled = false' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
+          grep -q 'TrafficStats.getUidRxBytes' app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
+          grep -q 'KEYCODE_DPAD_LEFT' app/src/main/java/com/embyplayernext/he/ui/screens/SharedPlayerControls.kt
+          grep -q 'tryAwaitRelease' app/src/main/java/com/embyplayernext/he/ui/screens/SharedPlayerControls.kt
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
@@ -350,7 +362,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.10-arm64-debug
+          name: EmbyPlayerNext-v2.3.11-arm64-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: ignore
           retention-days: 14
@@ -359,7 +371,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.10-arm64-release-unsigned
+          name: EmbyPlayerNext-v2.3.11-arm64-release-unsigned
           path: app/build/outputs/apk/release/app-release-unsigned.apk
           if-no-files-found: ignore
           retention-days: 14
