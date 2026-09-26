@@ -22,10 +22,10 @@ service_insert = """                    override fun onPlayerError(
                     ) {
                         val causeChain = generateSequence<Throwable>(error) { it.cause }
                             .take(8)
-                            .joinToString(" <- ") { "\${it.javaClass.name}:\${it.message}" }
+                            .joinToString(" <- ") { "${it.javaClass.name}:${it.message}" }
                         logger.log(
                             "PlayerErrorService",
-                            "code=\${error.errorCode} name=\${error.errorCodeName} message=\${error.message} positionMs=\${eventTime.currentPlaybackPositionMs} cause=$causeChain"
+                            "code=${error.errorCode} name=${error.errorCodeName} message=${error.message} positionMs=${eventTime.currentPlaybackPositionMs} cause=$causeChain"
                         )
                     }
 
@@ -38,7 +38,7 @@ service_insert = """                    override fun onPlayerError(
                     ) {
                         logger.log(
                             "LoadError",
-                            "uri=\${loadEventInfo.uri} bytesLoaded=\${loadEventInfo.bytesLoaded} dataType=\${mediaLoadData.dataType} trackType=\${mediaLoadData.trackType} canceled=$wasCanceled positionMs=\${eventTime.currentPlaybackPositionMs} error=\${error.javaClass.name}:\${error.message}"
+                            "uri=${loadEventInfo.uri} bytesLoaded=${loadEventInfo.bytesLoaded} dataType=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} canceled=$wasCanceled positionMs=${eventTime.currentPlaybackPositionMs} error=${error.javaClass.name}:${error.message}"
                         )
                     }
 
@@ -54,17 +54,11 @@ screen_marker = """            override fun onPlayerError(playbackError: Playbac
 screen_insert = """            override fun onPlayerError(playbackError: PlaybackException) {
                 val causeChain = generateSequence<Throwable>(playbackError) { it.cause }
                     .take(8)
-                    .joinToString(" <- ") { "\${it.javaClass.name}:\${it.message}" }
+                    .joinToString(" <- ") { "${it.javaClass.name}:${it.message}" }
                 diagnostics.log(
                     "PlayerError",
-                    "code=\${playbackError.errorCode} name=\${playbackError.errorCodeName} message=\${playbackError.message} state=\${player.playbackState} positionMs=\${player.currentPosition} bufferedMs=\${player.bufferedPosition} loading=\${player.isLoading} playWhenReady=\${player.playWhenReady} uiCompat=\${config.hardwareCompatibilityMode} cause=$causeChain"
+                    "code=${playbackError.errorCode} name=${playbackError.errorCodeName} message=${playbackError.message} state=${player.playbackState} positionMs=${player.currentPosition} bufferedMs=${player.bufferedPosition} loading=${player.isLoading} playWhenReady=${player.playWhenReady} uiCompat=${config.hardwareCompatibilityMode} cause=$causeChain"
                 )
 """
 s = replace_once(s, screen_marker, screen_insert, "PlayerScreen onPlayerError marker")
-s = replace_once(
-    s,
-    "safeResume=$safeResumeMode stream=\${descriptor.streamUrl.substringBefore('?')}",
-    "safeResume=$safeResumeMode uiCompat=\${config.hardwareCompatibilityMode} stream=\${descriptor.streamUrl.substringBefore('?')}",
-    "PlayerAttempt compatibility marker",
-)
 screen.write_text(s)
