@@ -149,7 +149,6 @@ fun SharedPlayerControls(
             }
         }
     }
-}
 
     if (speedDialog) {
         val speeds = listOf(.5f, .75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
