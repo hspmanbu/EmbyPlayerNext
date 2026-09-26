@@ -379,6 +379,17 @@ jobs:
           grep -q 'DirectCodecDiagnosticScreen' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
           grep -q 'DirectCodecFrame' app/src/main/java/com/embyplayernext/he/ui/screens/DirectCodecDiagnosticScreen.kt
           grep -q '5/5 · DirectCodec' app/src/main/java/com/embyplayernext/he/ui/screens/SettingsScreen.kt
+      - name: Apply 2.3.16 DirectCodec UI and speed validation
+        shell: bash
+        run: |
+          cp .ci/overlay/app/src/main/java/com/embyplayernext/he/ui/screens/DirectCodecDiagnosticScreen.kt app/src/main/java/com/embyplayernext/he/ui/screens/DirectCodecDiagnosticScreen.kt
+          python3 .ci/release-2.3.16-directcodec-ui-speed.py
+          grep -q 'versionCode = 139' app/build.gradle.kts
+          grep -q 'versionName = "2.3.16"' app/build.gradle.kts
+          grep -q 'CancellationException' app/src/main/java/com/embyplayernext/he/ui/screens/DirectCodecDiagnosticScreen.kt
+          grep -q 'DirectCodecSpeed' app/src/main/java/com/embyplayernext/he/ui/screens/DirectCodecDiagnosticScreen.kt
+          grep -q 'SpeedPickerPage' app/src/main/java/com/embyplayernext/he/ui/screens/DirectCodecDiagnosticScreen.kt
+          grep -q 'playFocusRequester' app/src/main/java/com/embyplayernext/he/ui/screens/DirectCodecDiagnosticScreen.kt
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
@@ -415,7 +426,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.15-arm64-debug
+          name: EmbyPlayerNext-v2.3.16-arm64-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: ignore
           retention-days: 14
@@ -424,7 +435,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.15-arm64-release-unsigned
+          name: EmbyPlayerNext-v2.3.16-arm64-release-unsigned
           path: app/build/outputs/apk/release/app-release-unsigned.apk
           if-no-files-found: ignore
           retention-days: 14
