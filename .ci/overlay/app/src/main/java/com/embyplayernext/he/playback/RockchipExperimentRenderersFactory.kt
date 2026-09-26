@@ -128,7 +128,7 @@ private class RockchipExperimentVideoRenderer(
     ): Float {
         val baseline = super.getCodecOperatingRateV23(targetPlaybackSpeed, format, streamFormats)
         val mode = experimentMode()
-        if (isTarget(format) && (mode == "no_operating_rate" || mode == "dangbei_minimal")) {
+        if (isTarget(format) && (mode == "no_operating_rate" || mode == "dangbei_minimal" || mode == "directcodec_renderer")) {
             logger.log(
                 "RKCodecRate",
                 "mode=$mode mime=${format.sampleMimeType} frameRate=${format.frameRate} baseline=$baseline override=$CODEC_OPERATING_RATE_UNSET",
@@ -142,6 +142,37 @@ private class RockchipExperimentVideoRenderer(
             )
         }
         return baseline
+    }
+
+
+    override fun shouldDropOutputBuffer(earlyUs: Long, elapsedRealtimeUs: Long, isLastBuffer: Boolean): Boolean {
+        if (experimentMode() == "directcodec_renderer") return false
+        return super.shouldDropOutputBuffer(earlyUs, elapsedRealtimeUs, isLastBuffer)
+    }
+
+    override fun shouldDropBuffersToKeyframe(earlyUs: Long, elapsedRealtimeUs: Long, isLastBuffer: Boolean): Boolean {
+        if (experimentMode() == "directcodec_renderer") return false
+        return super.shouldDropBuffersToKeyframe(earlyUs, elapsedRealtimeUs, isLastBuffer)
+    }
+
+    override fun shouldSkipBuffersWithIdenticalReleaseTime(): Boolean {
+        if (experimentMode() == "directcodec_renderer") return false
+        return super.shouldSkipBuffersWithIdenticalReleaseTime()
+    }
+
+    override fun renderOutputBufferV21(
+        codec: MediaCodecAdapter,
+        index: Int,
+        presentationTimeUs: Long,
+        releaseTimeNs: Long,
+    ) {
+        if (experimentMode() == "directcodec_renderer") {
+            logger.log("RKDirectRenderer", "ptsUs=" + presentationTimeUs + " release=immediate")
+            @Suppress("DEPRECATION")
+            super.renderOutputBuffer(codec, index, presentationTimeUs)
+        } else {
+            super.renderOutputBufferV21(codec, index, presentationTimeUs, releaseTimeNs)
+        }
     }
 
     override fun getMediaFormat(
@@ -168,7 +199,7 @@ private class RockchipExperimentVideoRenderer(
                 "no_operating_rate" -> {
                     mediaFormat.removeKey("operating-rate")
                 }
-                "dangbei_minimal" -> {
+                "dangbei_minimal", "directcodec_renderer" -> {
                     listOf(
                         "operating-rate",
                         "priority",
