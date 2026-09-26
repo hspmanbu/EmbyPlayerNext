@@ -2,19 +2,24 @@ package com.embyplayernext.he.ui.screens
 
 import android.net.Uri
 import android.view.SurfaceView
+import android.view.View
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.weight
 import androidx.compose.material3.Button
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -65,6 +70,9 @@ fun LibVlcPlayerScreen(
     var durationMs by remember(descriptor.playSessionId) {
         mutableLongStateOf(descriptor.serverRunTimeTicks?.div(10_000L) ?: 0L)
     }
+    var dragging by remember { mutableStateOf(false) }
+    var dragPositionMs by remember { mutableFloatStateOf(0f) }
+    var speed by remember { mutableFloatStateOf(1f) }
 
     fun playbackUrl(): String {
         if (config.accessToken.isBlank()) return descriptor.streamUrl
@@ -74,6 +82,13 @@ fun LibVlcPlayerScreen(
             .appendQueryParameter("api_key", config.accessToken)
             .build()
             .toString()
+    }
+
+    fun seekTo(targetMs: Long) {
+        val bounded = if (durationMs > 0) targetMs.coerceIn(0L, durationMs) else targetMs.coerceAtLeast(0L)
+        runCatching { player.setTime(bounded) }
+        positionMs = bounded
+        logger.log("LibVLC", "seek item=${descriptor.item.id} targetMs=$bounded")
     }
 
     fun exitPlayer() {
@@ -94,27 +109,50 @@ fun LibVlcPlayerScreen(
 
     DisposableEffect(player, surface, descriptor.playSessionId) {
         val vout = player.vlcVout
+        val layoutListener = View.OnLayoutChangeListener { _, left, top, right, bottom, _, _, _, _ ->
+            val width = right - left
+            val height = bottom - top
+            if (width > 0 && height > 0) {
+                vout.setWindowSize(width, height)
+                logger.log("LibVLC", "surfaceWindow item=${descriptor.item.id} size=${width}x${height}")
+            }
+        }
+        surface.addOnLayoutChangeListener(layoutListener)
         vout.setVideoView(surface)
         vout.attachViews()
+        runCatching {
+            player.aspectRatio = null
+            player.scale = 0f
+        }
+        surface.post {
+            if (surface.width > 0 && surface.height > 0) {
+                vout.setWindowSize(surface.width, surface.height)
+            }
+        }
 
         player.setEventListener { event ->
             when (event.type) {
                 MediaPlayer.Event.Opening -> logger.log("LibVLC", "event=Opening item=${descriptor.item.id}")
                 MediaPlayer.Event.Playing -> {
                     playing = true
+                    runCatching {
+                        player.aspectRatio = null
+                        player.scale = 0f
+                        player.rate = speed
+                    }
                     if (!started) {
                         started = true
                         scope.launch {
                             val requested = descriptor.initialPositionMs.coerceAtLeast(0L)
                             if (requested > 0L) {
                                 delay(100)
-                                runCatching { player.setTime(requested) }
+                                seekTo(requested)
                             }
                             positionMs = runCatching { player.time.coerceAtLeast(0L) }.getOrDefault(requested)
                             durationMs = runCatching { player.length.coerceAtLeast(0L) }.getOrDefault(durationMs)
                             logger.log(
                                 "LibVLC",
-                                "event=Playing item=${descriptor.item.id} positionMs=$positionMs durationMs=$durationMs",
+                                "event=Playing item=${descriptor.item.id} positionMs=$positionMs durationMs=$durationMs scale=${runCatching { player.scale }.getOrNull()} aspect=${runCatching { player.aspectRatio }.getOrNull()}",
                             )
                             onStart(descriptor, positionMs, durationMs.takeIf { it > 0 })
                         }
@@ -125,7 +163,10 @@ fun LibVlcPlayerScreen(
                     logger.log("LibVLC", "event=Paused item=${descriptor.item.id}")
                 }
                 MediaPlayer.Event.Vout -> {
-                    logger.log("LibVLC", "event=Vout item=${descriptor.item.id} positionMs=${runCatching { player.time }.getOrDefault(-1L)}")
+                    logger.log(
+                        "LibVLC",
+                        "event=Vout item=${descriptor.item.id} positionMs=${runCatching { player.time }.getOrDefault(-1L)} surface=${surface.width}x${surface.height}",
+                    )
                 }
                 MediaPlayer.Event.EncounteredError -> {
                     failed = true
@@ -153,6 +194,7 @@ fun LibVlcPlayerScreen(
 
         onDispose {
             logger.log("LibVLC", "dispose item=${descriptor.item.id}")
+            surface.removeOnLayoutChangeListener(layoutListener)
             runCatching { player.setEventListener(null) }
             runCatching { player.stop() }
             runCatching { if (vout.areViewsAttached()) vout.detachViews() }
@@ -180,13 +222,15 @@ fun LibVlcPlayerScreen(
         var heartbeat = 0
         while (isActive && !stopped) {
             delay(1000)
-            positionMs = runCatching { player.time.coerceAtLeast(0L) }.getOrDefault(positionMs)
+            if (!dragging) {
+                positionMs = runCatching { player.time.coerceAtLeast(0L) }.getOrDefault(positionMs)
+            }
             runCatching { player.length }.getOrDefault(-1L).takeIf { it > 0 }?.let { durationMs = it }
             heartbeat++
             if (heartbeat % 5 == 0) {
                 logger.log(
                     "LibVLC",
-                    "heartbeat item=${descriptor.item.id} positionMs=$positionMs durationMs=$durationMs playing=${runCatching { player.isPlaying }.getOrDefault(false)} failed=$failed",
+                    "heartbeat item=${descriptor.item.id} positionMs=$positionMs durationMs=$durationMs playing=${runCatching { player.isPlaying }.getOrDefault(false)} failed=$failed speed=$speed surface=${surface.width}x${surface.height}",
                 )
             }
             if (heartbeat % 10 == 0 && started) {
@@ -205,11 +249,13 @@ fun LibVlcPlayerScreen(
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(factory = { surface }, modifier = Modifier.fillMaxSize())
+
         Text(
             text = "LibVLC · 强制硬解 · DirectPlay",
             color = Color.White,
             modifier = Modifier.align(Alignment.TopCenter).background(Color.Black.copy(alpha = 0.55f)).padding(8.dp),
         )
+
         if (failed) {
             Text(
                 text = "LibVLC 播放失败（不会自动切换内核或服务器转码）",
@@ -217,18 +263,55 @@ fun LibVlcPlayerScreen(
                 modifier = Modifier.align(Alignment.Center).background(Color.Black.copy(alpha = 0.75f)).padding(16.dp),
             )
         }
-        Row(
-            modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter).background(Color.Black.copy(alpha = 0.55f)).padding(8.dp),
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.BottomCenter)
+                .background(Color.Black.copy(alpha = 0.60f))
+                .padding(8.dp),
         ) {
-            Button(onClick = { exitPlayer() }) { Text("返回") }
-            Button(onClick = { if (player.isPlaying) player.pause() else player.play() }) {
-                Text(if (playing) "暂停" else "播放")
+            if (durationMs > 0) {
+                Slider(
+                    value = if (dragging) dragPositionMs else positionMs.toFloat().coerceIn(0f, durationMs.toFloat()),
+                    onValueChange = {
+                        dragging = true
+                        dragPositionMs = it
+                    },
+                    onValueChangeFinished = {
+                        seekTo(dragPositionMs.toLong())
+                        dragging = false
+                    },
+                    valueRange = 0f..durationMs.toFloat(),
+                )
             }
-            Text(
-                "  ${positionMs / 1000}s / ${if (durationMs > 0) durationMs / 1000 else 0}s",
-                color = Color.White,
-                modifier = Modifier.padding(10.dp),
-            )
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Button(onClick = { exitPlayer() }) { Text("返回") }
+                Button(onClick = { seekTo(positionMs - config.rewindSeconds * 1000L) }) {
+                    Text("-${config.rewindSeconds}s")
+                }
+                Button(onClick = { if (player.isPlaying) player.pause() else player.play() }) {
+                    Text(if (playing) "暂停" else "播放")
+                }
+                Button(onClick = { seekTo(positionMs + config.forwardSeconds * 1000L) }) {
+                    Text("+${config.forwardSeconds}s")
+                }
+                Button(onClick = {
+                    speed = when (speed) {
+                        1f -> 1.25f
+                        1.25f -> 1.5f
+                        1.5f -> 2f
+                        else -> 1f
+                    }
+                    runCatching { player.rate = speed }
+                    logger.log("LibVLC", "rate item=${descriptor.item.id} rate=$speed")
+                }) { Text("${speed}x") }
+                Text(
+                    "${positionMs / 1000}s / ${if (durationMs > 0) durationMs / 1000 else 0}s",
+                    color = Color.White,
+                    modifier = Modifier.weight(1f).padding(start = 10.dp),
+                )
+            }
         }
     }
 }
