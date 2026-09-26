@@ -12,7 +12,7 @@ s = replace_once(s, 'versionCode = 129', 'versionCode = 130', "versionCode")
 s = replace_once(s, 'versionName = "2.3.6"', 'versionName = "2.3.7"', "versionName")
 dep_marker = '    implementation("androidx.media3:media3-datasource-okhttp:$media3")\n'
 if 'org.videolan.android:libvlc-all' not in s:
-    s = replace_once(s, dep_marker, dep_marker + '    implementation("org.videolan.android:libvlc-all:3.7.5")\n', "libvlc dependency")
+    s = replace_once(s, dep_marker, dep_marker + '    implementation("org.videolan.android:libvlc-all:3.6.5")\n', "libvlc dependency")
 build.write_text(s)
 
 models = Path("app/src/main/java/com/embyplayernext/he/data/model/Models.kt")
