@@ -11,7 +11,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -38,155 +46,189 @@ fun LibVlcPlayerScreen(
     onExit: () -> Unit,
 ) {
     val context = LocalContext.current
-    val scope = rememerCoroutineScope()
-    val log = remember { DiagnosticsLogger(context) }
-    val lib = remember { LibVLC(context.applicationContext, arrayListOf("--verbose=2", "--network-caching=1500")) }
-    val player = remember { MediaPlayer(lib) }
+    val scope = rememberCoroutineScope()
+    val logger = remember { DiagnosticsLogger(context) }
+    val libVlc = remember {
+        LibVLC(
+            context.applicationContext,
+            arrayListOf("--verbose=2", "--network-caching=1500", "--file-caching=1500"),
+        )
+    }
+    val player = remember { MediaPlayer(libVlc) }
     val surface = remember { SurfaceView(context) }
 
     var started by remember(descriptor.playSessionId) { mutableStateOf(false) }
     var stopped by remember(descriptor.playSessionId) { mutableStateOf(false) }
+    var failed by remember(descriptor.playSessionId) { mutableStateOf(false) }
     var playing by remember { mutableStateOf(false) }
-    var failedžH™[Y[X™\ˆÈ]]X›TÝ]SÙŠ˜[ÙJHBˆ˜\ˆÜÈžH™[Y[X™\ˆÈ]]X›SÛ™ÔÝ]SÙŠ
-HBˆ˜\ˆ\ˆžH™[Y[X™\ˆÈ]]X›SÛ™ÔÝ]SÙŠ\ØÜš\Ü‹œÙ\™\”[•[YUXÚÜÏË™]ŠLÌ
-HÎˆ
-HBˆ˜\ˆ›Ý]ÛÝ[žH™[Y[X™\ˆÈ]]X›R[Ý]SÙŠ
-HB‚ˆ[ˆ\›
+    var positionMs by remember(descriptor.playSessionId) { mutableLongStateOf(0L) }
+    var durationMs by remember(descriptor.playSessionId) {
+        mutableLongStateOf(descriptor.serverRunTimeTicks?.div(10_000L) ?: 0L)
+    }
 
-NˆÝš[™ÈÂˆYˆ
-ÛÛ™šYË˜XØÙ\ÜÕÚÙ[‹š\Ð›[šÊ
-JH™]\›ˆ\ØÜš\Ü‹œÝ™X[U\›ˆ˜[HH\šKœ\œÙJ\ØÜš\Ü‹œÝ™X[U\›
-Bˆ™]\›ˆYˆ
-K™Ù]]Y\žT\˜[Y]\Š˜\WÚÙ^HŠHOH[
-H\ØÜš\Ü‹œÝ™X[U\›ˆ[ÙHK˜Z[\ÛŠ
-K˜\[™]Y\žT\˜[Y]\Š˜\WÚÙ^H‹ÛÛ™šYË˜XØÙ\ÜÕÚÙ[ŠK˜Z[
+    fun playbackUrl(): String {
+        if (config.accessToken.isBlank()) return descriptor.streamUrl
+        val parsed = Uri.parse(descriptor.streamUrl)
+        if (parsed.getQueryParameter("api_key") != null) return descriptor.streamUrl
+        return parsed.buildUpon()
+            .appendQueryParameter("api_key", config.accessToken)
+            .build()
+            .toString()
+    }
 
-KÔÝš[™Ê
-BˆB‚ˆ[ˆ^]^Y\Š
-HÂˆYˆ
-\ÝÜY
-HÂˆÝÜYHYBˆ˜[H[Ø]Ú[™ÈÈ^Y\‹[YK˜ÛÙ\˜ÙP]X\Ý
-
-HK™Ù]Ü‘Y˜][
-ÜÊBˆ˜[H[Ø]Ú[™ÈÈ^Y\‹›[™ÝZÙRYˆÈ]ˆHK™Ù]Ü“[
+    fun exitPlayer() {
+        if (stopped) {
+            onExit()
+            return
+        }
+        stopped = true
+        val p = runCatching { player.time.coerceAtLeast(0L) }.getOrDefault(positionMs)
+        val d = runCatching { player.length }.getOrDefault(-1L).takeIf { it > 0 }
+        logger.log("LibVLC", "exit item=${descriptor.item.id} positionMs=$p durationMs=$d")
+        scope.launch {
+            onStopped(descriptor, p, d)
+            runCatching { player.stop() }
+            onExit()
+        }
+    }
 
-BˆØÛÜK›][˜ÚÂˆÛ”ÝÜY
-\ØÜš\Ü‹
-Bˆ[Ø]Ú[™ÈÈ^Y\‹œÝÜ
+    DisposableEffect(player, surface, descriptor.playSessionId) {
+        val vout = player.vlcVout
+        vout.setVideoView(surface)
+        vout.attachViews()
 
-HBˆÛ‘^]
+        player.setEventListener { event ->
+            when (event.type) {
+                MediaPlayer.Event.Opening -> logger.log("LibVLC", "event=Opening item=${descriptor.item.id}")
+                MediaPlayer.Event.Playing -> {
+                    playing = true
+                    if (!started) {
+                        started = true
+                        scope.launch {
+                            val requested = descriptor.initialPositionMs.coerceAtLeast(0L)
+                            if (requested > 0L) {
+                                delay(100)
+                                runCatching { player.setTime(requested) }
+                            }
+                            positionMs = runCatching { player.time.coerceAtLeast(0L) }.getOrDefault(requested)
+                            durationMs = runCatching { player.length.coerceAtLeast(0L) }.getOrDefault(durationMs)
+                            logger.log(
+                                "LibVLC",
+                                "event=Playing item=${descriptor.item.id} positionMs=$positionMs durationMs=$durationMs",
+                            )
+                            onStart(descriptor, positionMs, durationMs.takeIf { it > 0 })
+                        }
+                    }
+                }
+                MediaPlayer.Event.Paused -> {
+                    playing = false
+                    logger.log("LibVLC", "event=Paused item=${descriptor.item.id}")
+                }
+                MediaPlayer.Event.Vout -> {
+                    logger.log("LibVLC", "event=Vout item=${descriptor.item.id} positionMs=${runCatching { player.time }.getOrDefault(-1L)}")
+                }
+                MediaPlayer.Event.EncounteredError -> {
+                    failed = true
+                    playing = false
+                    logger.log(
+                        "LibVLC",
+                        "event=EncounteredError item=${descriptor.item.id} positionMs=${runCatching { player.time }.getOrDefault(-1L)}",
+                    )
+                }
+                MediaPlayer.Event.EndReached -> {
+                    playing = false
+                    if (!stopped) {
+                        stopped = true
+                        scope.launch {
+                            val p = runCatching { player.time.coerceAtLeast(0L) }.getOrDefault(positionMs)
+                            val d = runCatching { player.length }.getOrDefault(-1L).takeIf { it > 0 }
+                            logger.log("LibVLC", "event=EndReached item=${descriptor.item.id} positionMs=$p durationMs=$d")
+                            onStopped(descriptor, p, d)
+                        }
+                    }
+                }
+            }
+        }
+        logger.log("LibVLC", "surfaceAttached item=${descriptor.item.id} method=${descriptor.playMethod}")
 
-BˆBˆH[ÙHÛ‘^]
+        onDispose {
+            logger.log("LibVLC", "dispose item=${descriptor.item.id}")
+            runCatching { player.setEventListener(null) }
+            runCatching { player.stop() }
+            runCatching { if (vout.areViewsAttached()) vout.detachViews() }
+            runCatching { player.release() }
+            runCatching { libVlc.release() }
+        }
+    }
 
-BˆB‚ˆ\ÜÜØX›QY™™XÝ
-\ØÜš\Ü‹œ^TÙ\ÜÚ[Û’Y
-HÂˆ˜[›Ý]H^Y\‹›Õ›Ý]ˆ›Ý]œÙ]šY[ÕšY]ÊÝ\™˜XÙJBˆ›Ý]˜]XÚšY]ÜÊ
-Bˆ^Y\‹œÙ]]™[\Ý[™\ˆÈHO‚ˆÚ[ˆ
-K\JHÂˆYYXT^Y\‹‘]™[“Ü[š[™ÈOˆÙË›ÙÊ“X•“È‹“Ü[š[™È][OIÙ\ØÜš\Ü‹š][KšYHŠBˆYYXT^Y\‹‘]™[”^Z[™ÈOˆØÛÜK›][˜ÚÂˆ^Z[™ÈHYBˆYˆ
-\Ý\Y
-HÂˆYˆ
-\ØÜš\Ü‹š[š]X[ÜÚ][Û“\Èˆ
-HÂˆ[^JL
-Bˆ[Ø]Ú[™ÈÈ^Y\‹œÙ][YJ\ØÜš\Ü‹š[š]X[ÜÚ][Û“\ÊHBˆBˆÜÈH[Ø]Ú[™ÈÈ^Y\‹[YK˜ÛÙ\˜ÙP]X\Ý
-
-HK™Ù]Ü‘Y˜][
-
-Bˆ\ˆH[Ø]Ú[™ÈÈ^Y\‹›[™Ý˜ÛÙ\˜ÙP]X\Ý
-
-HK™Ù]Ü‘Y˜][
-\ŠBˆÝ\YHYBˆÙË›ÙÊ“X•“È‹”^Z[™È][OIÙ\ØÜš\Ü‹š][KšYHÜÏIÜÈ\I\ˆ›Ý]I›Ý]ÛÝ[ŠBˆÛ”Ý\
-\ØÜš\Ü‹ÜË\‹ZÙRYˆÈ]ˆJBˆBˆBˆYYXT^Y\‹‘]™[”]\ÙYOˆÈ^Z[™ÈH˜[ÙNÈÙË›ÙÊ“X•“È‹”]\ÙY][OIÙ\ØÜš\Ü‹š][KšYHŠHBˆYYXT^Y\‹‘]™[•›Ý]OˆÈ›Ý]ÛÝ[HK›Ý]ÛÝ[ÈÙË›ÙÊ“X•“È‹•›Ý]][OIÙ\ØÜš\Ü‹š][KšYHÛÝ[I›Ý]ÛÝ[ŠHBˆYYXT^Y\‹‘]™[‘[˜ÛÝ[\™Y\œ›ÜˆOˆÈ˜Z[YHYNÈ^Z[™ÈH˜[ÙNÈÙË›ÙÊ“X•“È‹‘[˜ÛÝ[\™Y\œ›Üˆ][OIÙ\ØÜš\Ü‹š][KšYHÜÏIÜ[Ø]Ú[™ÈÈ^Y\‹[YHK™Ù]Ü‘Y˜][
-LS
-_HŠHBˆYYXT^Y\‹‘]™[‘[™™XXÚYOˆØÛÜK›][˜ÚÂˆ^Z[™ÈH˜[ÙBˆYˆ
-\ÝÜY
-HÂˆÝÜYHYBˆ˜[H[Ø]Ú[™ÈÈ^Y\‹[YK˜ÛÙ\˜ÙP]X\Ý
-
-HK™Ù]Ü‘Y˜][
-ÜÊBˆ˜[H[Ø]Ú[™ÈÈ^Y\‹›[™ÝZÙRYˆÈ]ˆHK™Ù]Ü“[
+    LaunchedEffect(descriptor.streamUrl, descriptor.playSessionId) {
+        failed = false
+        val media = Media(libVlc, Uri.parse(playbackUrl()))
+        media.setHWDecoderEnabled(true, true)
+        media.addOption(":network-caching=1500")
+        media.addOption(":file-caching=1500")
+        logger.log(
+            "LibVLC",
+            "prepare item=${descriptor.item.id} method=${descriptor.playMethod} hwDecoder=true force=true requestedMs=${descriptor.initialPositionMs} url=${descriptor.streamUrl.substringBefore('?')}",
+        )
+        player.media = media
+        media.release()
+        player.play()
+    }
 
-BˆÙË›ÙÊ“X•“È‹‘[™™XXÚY][OIÙ\ØÜš\Ü‹š][KšYHÜÏI\IŠBˆÛ”ÝÜY
-\ØÜš\Ü‹
-BˆBˆBˆBˆBˆÙË›ÙÊ“X•“È‹˜]XÚ][OIÙ\ØÜš\Ü‹š][KšYHÏ]YH›Ü˜ÙO]YHY]ÙIÙ\ØÜš\Ü‹œ^SY]ÙHŠBˆÛ‘\ÜÜÙHÂˆÙË›ÙÊ“X•“È‹™\ÜÜÙH][OIÙ\ØÜš\Ü‹š][KšYHŠBˆ[Ø]Ú[™ÈÈ^Y\‹œÝÜ
+    LaunchedEffect(descriptor.playSessionId) {
+        var heartbeat = 0
+        while (isActive && !stopped) {
+            delay(1000)
+            positionMs = runCatching { player.time.coerceAtLeast(0L) }.getOrDefault(positionMs)
+            runCatching { player.length }.getOrDefault(-1L).takeIf { it > 0 }?.let { durationMs = it }
+            heartbeat++
+            if (heartbeat % 5 == 0) {
+                logger.log(
+                    "LibVLC",
+                    "heartbeat item=${descriptor.item.id} positionMs=$positionMs durationMs=$durationMs playing=${runCatching { player.isPlaying }.getOrDefault(false)} failed=$failed",
+                )
+            }
+            if (heartbeat % 10 == 0 && started) {
+                onProgress(
+                    descriptor,
+                    positionMs,
+                    durationMs.takeIf { it > 0 },
+                    !runCatching { player.isPlaying }.getOrDefault(false),
+                    "TimeUpdate",
+                )
+            }
+        }
+    }
 
-HBˆ[Ø]Ú[™ÈÈYˆ
-›Ý]˜\™UšY]ÜÐ]XÚY
+    BackHandler { exitPlayer() }
 
-JH›Ý]™]XÚšY]ÜÊ
-HBˆ[Ø]Ú[™ÈÈ^Y\‹œ™[X\ÙJ
-HBˆ[Ø]Ú[™ÈÈX‹œ™[X\ÙJ
-HBˆBˆB‚ˆ][˜ÚYY™™XÝ
-\ØÜš\Ü‹œÝ™X[U\›\ØÜš\Ü‹œ^TÙ\ÜÚ[Û’Y
-HÂˆ˜[YYXHHYYXJX‹\šKœ\œÙJ\›
-
-JJBˆYYXKœÙ]ÑXÛÙ\‘[˜X›Y
-YKYJBˆYYXK˜YÜ[ÛŠŽ›™]ÛÜšËXØXÚ[™ÏLMLŠBˆÙË›ÙÊ“X•“È‹œ™\\™H][OIÙ\ØÜš\Ü‹š][KšYH\›IÙ\ØÜš\Ü‹œÝ™X[U\›œÝXœÝš[™Ð™Y›Ü™J	ÏÉÊ_HŠBˆ^Y\‹›YYXHHYYXBˆYYXKœ™[X\ÙJ
-Bˆ^Y\‹œ^J
-BˆB‚ˆ][˜ÚYY™™XÝ
-\ØÜš\Ü‹œ^TÙ\ÜÚ[Û’Y
-HÂˆ˜\ˆ\ÝÙÈHˆÚ[H
-\ÐXÝ]™H	‰ˆ\ÝÜY
-HÂˆ[^JL
-BˆÜÈH[Ø]Ú[™ÈÈ^Y\‹[YK˜ÛÙ\˜ÙP]X\Ý
-
-HK™Ù]Ü‘Y˜][
-ÜÊBˆ[Ø]Ú[™ÈÈ^Y\‹›[™ÝK™Ù]Ü‘Y˜][
-LS
-KZÙRYˆÈ]ˆOË›]È\ˆH]Bˆ˜[›ÝÈH[™›ÚY›ÜË”Þ\Ý[PÛØÚË™[\ÙY™X[[YJ
-BˆYˆ
-Ý\Y	‰ˆ›ÝÈH\ÝÙÈHL
-HÂˆ\ÝÙÈH›ÝÂˆÙË›ÙÊ“X•“È‹šX\™X]][OIÙ\ØÜš\Ü‹š][KšYHÜÏIÜÈ\I\ˆ^Z[™ÏIÜ[Ø]Ú[™ÈÈ^Y\‹š\Ô^Z[™ÈK™Ù]Ü‘Y˜][
-˜[ÙJ_H›Ý]I›Ý]ÛÝ[ŠBˆBˆBˆB‚ˆ][˜ÚYY™™XÝ
-\ØÜš\Ü‹œ^TÙ\ÜÚ[Û’Y
-HÂˆÚ[H
-\ÐXÝ]™H	‰ˆ\ÝÜY
-HÂˆ[^JLÌ
-BˆYˆ
-Ý\Y
-HÛ”›ÙÜ™\ÜÊ\ØÜš\Ü‹ÜË\‹ZÙRYˆÈ]ˆK\[Ø]Ú[™ÈÈ^Y\‹š\Ô^Z[™ÈK™Ù]Ü‘Y˜][
-˜[ÙJK•[YU\]HŠBˆBˆB‚ˆ˜XÚÒ[™\ˆÈ^]^Y\Š
-HB‚ˆ›Þ
-[ÙYšY\‹™š[X^Ú^™J
-K˜˜XÚÙÜ›Ý[™
-ÛÛÜ‹›XÚÊJHÂˆ[™›ÚYšY]Ê˜XÝÜžHHÈÝ\™˜XÙHK[ÙYšY\ˆH[ÙYšY\‹™š[X^Ú^™J
-JBˆ^
-“X•“È0­È9o.¹b-¹èk:)èÈ‹ÛÛÜˆHÛÛÜ‹•Ú]K[ÙYšY\ˆH[ÙYšY\‹˜[YÛŠ[YÛ›Y[•ÜÙ[\ŠK˜˜XÚÙÜ›Ý[™
-ÛÛÜ‹›XÚË˜ÛÜJ[OKMYŠJKœY[™Ê™
-JBˆYˆ
-˜Z[Y
-H^
-“X•“È9¤«y¥/¹i,z-){ï&ù§*º!ê¹bª9fçº` ‹ÛÛÜˆHÛÛÜ‹•Ú]K[ÙYšY\ˆH[ÙYšY\‹˜[YÛŠ[YÛ›Y[Ù[\ŠK˜˜XÚÙÜ›Ý[™
-ÛÛÜ‹›XÚË˜ÛÜJ[OKÍYŠJKœY[™ÊM‹™
-JBˆ›ÝÊ[ÙYšY\‹™š[X^ÚY
-
-K˜[YÛŠ[YÛ›Y[›ÝÛPÙ[\ŠK˜˜XÚÙÜ›Ý[™
-ÛÛÜ‹›XÚË˜ÛÜJ[OKMYŠJKœY[™Ê™
-JHÂˆ]ÛŠÛÛXÚÈHÈ^]^Y\Š
-HJHÈ^
-º/å9fçˆŠHBˆ]ÛŠÛÛXÚÈHÂˆ˜[H
-[Ø]Ú[™ÈÈ^Y\‹[YHK™Ù]Ü‘Y˜][
-ÜÊHHÛÛ™šYËœ™]Ú[™ÙXÛÛ™È
-ˆL
-K˜ÛÙ\˜ÙP]X\Ý
-
-Bˆ[Ø]Ú[™ÈÈ^Y\‹œÙ][YJ
-HBˆJHÈ^
-‹IØÛÛ™šYËœ™]Ú[™ÙXÛÛ™ß\ÈŠHBˆ]ÛŠÛÛXÚÈHÈYˆ
-[Ø]Ú[™ÈÈ^Y\‹š\Ô^Z[™ÈK™Ù]Ü‘Y˜][
-˜[ÙJJH^Y\‹œ]\ÙJ
-H[ÙH^Y\‹œ^J
-HJHÈ^
-Yˆ
-^Z[™ÊH¹¦ ¹`gˆ[ÙH¹¤«y¥/ˆŠHBˆ]ÛŠÛÛXÚÈHÂˆ˜[H
-[Ø]Ú[™ÈÈ^Y\‹[YHK™Ù]Ü‘Y˜][
-ÜÊH
-ÈÛÛ™šYË™›ÜØ\™ÙXÛÛ™È
-ˆL
-K˜ÛÙ\˜ÙP]X\Ý
-
-Bˆ[Ø]Ú[™ÈÈ^Y\‹œÙ][YJ
-HBˆJHÈ^
-ŠÉØÛÛ™šYË™›ÜØ\™ÙXÛÛ™ß\ÈŠHBˆ^
-‰ÜÜËÌL\ÈÈ	ÚYˆ
-\Œ
-H\‹ÌL[ÙH\È‹ÛÛÜPÛÛÜ‹•Ú]K[ÙYšY\S[ÙYšY\‹œY[™ÊL™
-JBˆBˆBŸB
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        AndroidView(factory = { surface }, modifier = Modifier.fillMaxSize())
+        Text(
+            text = "LibVLC Â· å¼ºåˆ¶ç¡¬è§£ Â· DirectPlay",
+            color = Color.White,
+            modifier = Modifier.align(Alignment.TopCenter).background(Color.Black.copy(alpha = 0.55f)).padding(8.dp),
+        )
+        if (failed) {
+            Text(
+                text = "LibVLC æ’­æ”¾å¤±è´¥ï¼ˆä¸ä¼šè‡ªåŠ¨åˆ‡æ¢å†…æ ¸æˆ–æœåŠ¡å™¨è½¬ç ï¼‰",
+                color = Color.White,
+                modifier = Modifier.align(Alignment.Center).background(Color.Black.copy(alpha = 0.75f)).padding(16.dp),
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter).background(Color.Black.copy(alpha = 0.55f)).padding(8.dp),
+        ) {
+            Button(onClick = { exitPlayer() }) { Text("è¿”å›ž") }
+            Button(onClick = { if (player.isPlaying) player.pause() else player.play() }) {
+                Text(if (playing) "æš‚åœ" else "æ’­æ”¾")
+            }
+            Text(
+                "  ${positionMs / 1000}s / ${if (durationMs > 0) durationMs / 1000 else 0}s",
+                color = Color.White,
+                modifier = Modifier.padding(10.dp),
+            )
+        }
+    }
+}
