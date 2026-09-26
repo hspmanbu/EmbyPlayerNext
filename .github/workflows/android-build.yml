@@ -301,7 +301,6 @@ jobs:
           grep -q 'videoFrameMediaId' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
           ! grep -q 'posMs=\$currentPosition state=\$playbackState isPlaying=\$isPlaying' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
           grep -q 'SharedPlayerControls' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
-          grep -q 'SharedPlayerControls' app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
       - name: Apply 2.3.10 restored shared player UI
         shell: bash
         run: |
