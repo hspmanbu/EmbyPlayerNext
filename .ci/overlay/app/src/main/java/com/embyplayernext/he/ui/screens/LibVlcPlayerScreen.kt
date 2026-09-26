@@ -8,6 +8,7 @@ import android.content.res.Configuration
 import android.media.AudioManager
 import android.net.TrafficStats
 import android.net.Uri
+import android.os.Build
 import android.view.SurfaceView
 import android.view.View
 import androidx.activity.compose.BackHandler
@@ -81,6 +82,14 @@ fun LibVlcPlayerScreen(
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val isTv = (configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) == Configuration.UI_MODE_TYPE_TELEVISION ||
         context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
+    val isRockchip = remember {
+        listOf(Build.MANUFACTURER, Build.BRAND, Build.HARDWARE, Build.BOARD, Build.DEVICE, Build.PRODUCT)
+            .any { value ->
+                value.contains("rockchip", ignoreCase = true) ||
+                    value.contains("rk35", ignoreCase = true) ||
+                    value.contains("rk30", ignoreCase = true)
+            }
+    }
 
     val libVlc = remember {
         LibVLC(
@@ -114,6 +123,7 @@ fun LibVlcPlayerScreen(
     var gestureHud by remember { mutableStateOf<GestureHud?>(null) }
     var uiTicker by remember { mutableLongStateOf(0L) }
     var remoteActivityTick by remember { mutableLongStateOf(0L) }
+    var pendingRestartSeekMs by remember(descriptor.playSessionId) { mutableStateOf<Long?>(null) }
 
     fun playbackUrl(): String {
         if (config.accessToken.isBlank()) return descriptor.streamUrl
@@ -122,11 +132,44 @@ fun LibVlcPlayerScreen(
         return parsed.buildUpon().appendQueryParameter("api_key", config.accessToken).build().toString()
     }
 
-    fun seekTo(targetMs: Long) {
+    fun directSeekTo(targetMs: Long, reason: String) {
         val bounded = if (durationMs > 0) targetMs.coerceIn(0L, durationMs) else targetMs.coerceAtLeast(0L)
         runCatching { player.setTime(bounded) }
         positionMs = bounded
-        logger.log("LibVLC", "seek item=${descriptor.item.id} targetMs=$bounded")
+        logger.log("LibVLCSeek", "direct item=${descriptor.item.id} targetMs=$bounded reason=$reason")
+    }
+
+    fun restartDecoderAt(targetMs: Long) {
+        val bounded = if (durationMs > 0) targetMs.coerceIn(0L, durationMs) else targetMs.coerceAtLeast(0L)
+        pendingRestartSeekMs = bounded
+        positionMs = bounded
+        buffering = true
+        controlsVisible = true
+        logger.log(
+            "LibVLCSeek",
+            "restart begin item=${descriptor.item.id} targetMs=$bounded rockchip=$isRockchip playing=${runCatching { player.isPlaying }.getOrDefault(false)}",
+        )
+        runCatching { player.stop() }
+        runCatching {
+            val vout = player.vlcVout
+            if (vout.areViewsAttached()) vout.detachViews()
+            vout.setVideoView(surface)
+            vout.attachViews()
+            if (surface.width > 0 && surface.height > 0) vout.setWindowSize(surface.width, surface.height)
+        }
+        val media = Media(libVlc, Uri.parse(playbackUrl()))
+        media.setHWDecoderEnabled(true, true)
+        media.addOption(":network-caching=1500")
+        media.addOption(":file-caching=1500")
+        player.media = media
+        media.release()
+        player.play()
+    }
+
+    fun seekTo(targetMs: Long) {
+        val bounded = if (durationMs > 0) targetMs.coerceIn(0L, durationMs) else targetMs.coerceAtLeast(0L)
+        if (isRockchip && started && !ended) restartDecoderAt(bounded)
+        else directSeekTo(bounded, if (isRockchip) "startup" else "normal")
     }
 
     fun applyAspect() {
@@ -235,13 +278,27 @@ fun LibVlcPlayerScreen(
                     ended = false
                     runCatching { player.rate = speed }
                     applyAspect()
+                    val restartTarget = pendingRestartSeekMs
+                    if (restartTarget != null) {
+                        pendingRestartSeekMs = null
+                        scope.launch {
+                            delay(140)
+                            directSeekTo(restartTarget, "restart-after-playing")
+                            delay(120)
+                            applyAspect()
+                            logger.log(
+                                "LibVLCSeek",
+                                "restart seek issued item=${descriptor.item.id} targetMs=$restartTarget surface=${surface.width}x${surface.height}",
+                            )
+                        }
+                    }
                     if (!started) {
                         started = true
                         scope.launch {
                             val requested = descriptor.initialPositionMs.coerceAtLeast(0L)
                             if (requested > 0L) {
                                 delay(100)
-                                seekTo(requested)
+                                directSeekTo(requested, "initial-resume")
                             }
                             positionMs = runCatching { player.time.coerceAtLeast(0L) }.getOrDefault(requested)
                             durationMs = runCatching { player.length.coerceAtLeast(0L) }.getOrDefault(durationMs)
