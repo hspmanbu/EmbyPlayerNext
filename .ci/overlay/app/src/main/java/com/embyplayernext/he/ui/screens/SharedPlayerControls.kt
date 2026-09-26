@@ -20,21 +20,30 @@ import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Subtitles
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.unit.dp
 
 @Composable
 fun SharedPlayerControls(
     title: String,
-    engineLabel: String,
     visible: Boolean,
     locked: Boolean,
     positionMs: Long,
@@ -43,18 +52,22 @@ fun SharedPlayerControls(
     networkSpeed: String? = null,
     rewindSeconds: Int,
     forwardSeconds: Int,
-    audioEnabled: Boolean = true,
-    subtitleEnabled: Boolean = true,
+    playbackSpeed: Float = 1f,
+    audioTracks: List<PlayerTrackOption> = emptyList(),
+    subtitleTracks: List<PlayerTrackOption> = emptyList(),
     onBack: () -> Unit,
     onToggleLock: () -> Unit,
     onSeek: (Long) -> Unit,
     onTogglePlay: () -> Unit,
-    onSpeed: () -> Unit,
-    onAudio: () -> Unit,
-    onSubtitle: () -> Unit,
+    onSetSpeed: (Float) -> Unit,
+    onSelectAudio: (String) -> Unit,
+    onSelectSubtitle: (String) -> Unit,
     onAspect: () -> Unit,
 ) {
-    if (!visible && !locked) return
+    var speedDialog by remember { mutableStateOf(false) }
+    var audioDialog by remember { mutableStateOf(false) }
+    var subtitleDialog by remember { mutableStateOf(false) }
+    if (!visible && !locked && !speedDialog && !audioDialog && !subtitleDialog) return
     Column(Modifier.fillMaxSize()) {
         Row(
             Modifier
@@ -68,10 +81,7 @@ fun SharedPlayerControls(
                     Icon(Icons.Default.ArrowBack, null, tint = Color.White)
                 }
             }
-            Column(Modifier.weight(1f)) {
-                Text(title, color = Color.White)
-                Text(engineLabel, color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
-            }
+            Text(title, color = Color.White, modifier = Modifier.weight(1f))
             networkSpeed?.let {
                 Text("网速: $it", color = Color.White, style = MaterialTheme.typography.bodySmall)
             }
@@ -121,14 +131,14 @@ fun SharedPlayerControls(
                         IconButton(onClick = { onSeek(safePosition + forwardSeconds * 1000L) }) {
                             Icon(Icons.Default.Forward30, null, tint = Color.White)
                         }
-                        IconButton(onClick = onSpeed) {
+                        IconButton(onClick = { speedDialog = true }) {
                             Icon(Icons.Default.Speed, null, tint = Color.White)
                         }
-                        IconButton(onClick = onAudio, enabled = audioEnabled) {
-                            Icon(Icons.Default.Audiotrack, null, tint = if (audioEnabled) Color.White else Color.Gray)
+                        IconButton(onClick = { audioDialog = true }, enabled = audioTracks.isNotEmpty()) {
+                            Icon(Icons.Default.Audiotrack, null, tint = if (audioTracks.isNotEmpty()) Color.White else Color.Gray)
                         }
-                        IconButton(onClick = onSubtitle, enabled = subtitleEnabled) {
-                            Icon(Icons.Default.Subtitles, null, tint = if (subtitleEnabled) Color.White else Color.Gray)
+                        IconButton(onClick = { subtitleDialog = true }) {
+                            Icon(Icons.Default.Subtitles, null, tint = Color.White)
                         }
                         IconButton(onClick = onAspect) {
                             Icon(Icons.Default.AspectRatio, null, tint = Color.White)
@@ -139,6 +149,97 @@ fun SharedPlayerControls(
             }
         }
     }
+}
+
+    if (speedDialog) {
+        val speeds = listOf(.5f, .75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
+        AlertDialog(
+            onDismissRequest = { speedDialog = false },
+            title = { Text("选择播放倍速") },
+            text = {
+                Column {
+                    speeds.forEach { value ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable {
+                                onSetSpeed(value)
+                                speedDialog = false
+                            }.padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = kotlin.math.abs(playbackSpeed - value) < 0.01f, onClick = null)
+                            Text(value.toString() + "x")
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { speedDialog = false }) { Text("关闭") } },
+        )
+    }
+
+    if (audioDialog) {
+        SharedTrackDialog(
+            title = "选择音轨",
+            tracks = audioTracks,
+            includeOff = false,
+            onDismiss = { audioDialog = false },
+            onSelect = {
+                onSelectAudio(it)
+                audioDialog = false
+            },
+        )
+    }
+
+    if (subtitleDialog) {
+        SharedTrackDialog(
+            title = "选择字幕",
+            tracks = subtitleTracks,
+            includeOff = true,
+            onDismiss = { subtitleDialog = false },
+            onSelect = {
+                onSelectSubtitle(it)
+                subtitleDialog = false
+            },
+        )
+    }
+}
+
+data class PlayerTrackOption(val id: String, val label: String, val selected: Boolean = false)
+
+@Composable
+private fun SharedTrackDialog(
+    title: String,
+    tracks: List<PlayerTrackOption>,
+    includeOff: Boolean,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                if (includeOff) {
+                    Row(
+                        Modifier.fillMaxWidth().clickable { onSelect("__off__") }.padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = tracks.none { it.selected }, onClick = null)
+                        Text("关闭")
+                    }
+                }
+                tracks.forEach { track ->
+                    Row(
+                        Modifier.fillMaxWidth().clickable { onSelect(track.id) }.padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = track.selected, onClick = null)
+                        Text(track.label)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
+    )
 }
 
 private fun sharedTime(ms: Long): String {
