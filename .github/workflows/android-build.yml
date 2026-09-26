@@ -6,6 +6,10 @@ on:
     branches: [ main ]
   pull_request:
 
+concurrency:
+  group: android-build-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -30,13 +34,22 @@ jobs:
           unzip -o source.zip -d .
           rm -f source.b64 source.zip EmbyPlayerNext-source-ci.zip
 
+      - name: Apply data and API rework
+        shell: bash
+        run: |
+          rm -rf .ci/rework
+          mkdir -p .ci/rework
+          tar -xzf .ci/rework_pack.tgz -C .ci/rework
+          patch -p0 < .ci/rework/api-rework.patch
+
       - name: Apply UI and feature overlay
         shell: bash
         run: |
           test -d .ci/overlay
           cp -a .ci/overlay/. .
-          test -f app/src/main/java/com/aistudio/embyplayer/ui/screens/SearchScreen.kt
-          grep -q 'versionName = "2.1.0"' app/build.gradle.kts
+          cp -a .ci/rework/app/. app/
+          test -f app/src/main/java/com/aistudio/embyplayer/ui/screens/LibrariesScreen.kt
+          grep -q 'versionName = "2.2.0"' app/build.gradle.kts
 
       - name: Apply source fixes
         shell: bash
@@ -54,7 +67,345 @@ jobs:
               'Text(descriptor.item.name,color=Color.White,modifier=Modifier.weight(1f));Text("网速: $networkSpeed",color=Color.White,style=MaterialTheme.typography.bodySmall)'
           )
           p.write_text(s)
+
+          settings = Path("app/src/main/java/com/aistudio/embyplayer/ui/screens/SettingsScreen.kt")
+          if settings.exists():
+              ss = settings.read_text()
+              lazy_import = "import androidx.compose.foundation.lazy.LazyColumn"
+              if lazy_import not in ss:
+                  rows = ss.splitlines()
+                  package_index = next((i for i, row in enumerate(rows) if row.startswith("package ")), -1)
+                  insert_at = package_index + 1
+                  while insert_at < len(rows) and rows[insert_at].strip() == "":
+                      insert_at += 1
+                  rows.insert(insert_at, lazy_import)
+                  ss = "\n".join(rows) + "\n"
+              settings.write_text(ss)
+
+      - name: Apply 2.2.1 stability fixes
+        shell: bash
+        run: |
+          gzip -dc .ci/stability-2.2.1.patch.gz | patch -p0
+          gzip -dc .ci/detail-race-2.2.1.patch.gz | patch -p0
+          cat .ci/ui-ux-2.2.1.patch.b64.part00 .ci/ui-ux-2.2.1.patch.b64.part01 .ci/ui-ux-2.2.1.patch.b64.part02 .ci/ui-ux-2.2.1.patch.b64.part03 .ci/ui-ux-2.2.1.patch.b64.part04 > /tmp/ui-ux.patch.b64
+          base64 --decode /tmp/ui-ux.patch.b64 > /tmp/ui-ux.patch.gz
+          gzip -dc /tmp/ui-ux.patch.gz > /tmp/ui-ux.patch
+          git apply --check /tmp/ui-ux.patch
+          git apply /tmp/ui-ux.patch
+
+          cat .ci/player-feature-2.2.1.patch.b64.part00 .ci/player-feature-2.2.1.patch.b64.part01 .ci/player-feature-2.2.1.patch.b64.part02 .ci/player-feature-2.2.1.patch.b64.part03 > /tmp/player-feature.patch.b64
+          base64 --decode /tmp/player-feature.patch.b64 > /tmp/player-feature.patch.gz
+          gzip -dc /tmp/player-feature.patch.gz > /tmp/player-feature.patch
+          git apply --check /tmp/player-feature.patch
+          git apply /tmp/player-feature.patch
+          patch -p1 < .ci/player-feature-fix1.patch
+          cat .ci/player-ui-correction-2.2.1.patch.b64.part00 .ci/player-ui-correction-2.2.1.patch.b64.part01 .ci/player-ui-correction-2.2.1.patch.b64.part02 .ci/player-ui-correction-2.2.1.patch.b64.part03 > /tmp/player-ui-correction.b64
+          base64 --decode /tmp/player-ui-correction.b64 > /tmp/player-ui-correction.patch.gz
+          gzip -dc /tmp/player-ui-correction.patch.gz > /tmp/player-ui-correction.patch
+          patch --dry-run -p1 < /tmp/player-ui-correction.patch
+          patch -p1 < /tmp/player-ui-correction.patch
+
+          grep -q 'versionName = "2.2.1"' app/build.gradle.kts
+
+      - name: Apply 2.2.2 daily experience overlay
+        shell: bash
+        run: |
+          cat \
+            .ci/experience-2.2.2-overlay.b64.part00 \
+            .ci/experience-2.2.2-overlay.b64.part01 \
+            .ci/experience-2.2.2-overlay.b64.part02a \
+            .ci/experience-2.2.2-overlay.b64.part02b \
+            .ci/experience-2.2.2-overlay.b64.part03 \
+            .ci/experience-2.2.2-overlay.b64.part04 \
+            > /tmp/experience-2.2.2-overlay.b64
+          base64 --decode /tmp/experience-2.2.2-overlay.b64 > /tmp/experience-2.2.2-overlay.tgz
+          echo "0ca764ace29521dc4c17aaa8c4866bc6718a8f1d61b103cfa5e90341a741ee33  /tmp/experience-2.2.2-overlay.tgz" | sha256sum -c -
+          tar -xzf /tmp/experience-2.2.2-overlay.tgz -C .
+          grep -q 'versionName = "2.2.2"' app/build.gradle.kts
+
+      - name: Apply 2.3.0 release-pass fixes
+        shell: bash
+        run: |
+          rm -rf app/src/main/java/com/embyplayernext/he
+          mkdir -p app/src/main/java/com/embyplayernext
+          mv app/src/main/java/com/aistudio/embyplayer app/src/main/java/com/embyplayernext/he
+          find app/src/main/java/com/embyplayernext/he -name '*.kt' -print0 | xargs -0 sed -i 's/com\.aistudio\.embyplayer/com.embyplayernext.he/g'
+          sed -i 's/namespace = "com.aistudio.embyplayer"/namespace = "com.embyplayernext.he"/' app/build.gradle.kts
+          sed -i 's/applicationId = "com.aistudio.embyplayer.armx"/applicationId = "com.embyplayernext.he"/' app/build.gradle.kts
+          mkdir -p app/src/main/res/mipmap-anydpi-v26 app/src/main/res/drawable app/src/main/res/drawable-nodpi
+          gzip -dc .ci/release-2.3.0.patch.gz > /tmp/release-2.3.0.patch
+          patch --dry-run -p1 < /tmp/release-2.3.0.patch
+          patch -p1 < /tmp/release-2.3.0.patch
+          gzip -dc .ci/release-2.3.0-fix1.patch.gz > /tmp/release-2.3.0-fix1.patch
+          patch --dry-run -p1 < /tmp/release-2.3.0-fix1.patch
+          patch -p1 < /tmp/release-2.3.0-fix1.patch
+          patch --dry-run -p1 < .ci/release-2.3.0-fix2.patch
+          patch -p1 < .ci/release-2.3.0-fix2.patch
+          patch --dry-run -p1 < .ci/release-2.3.0-fix3.patch
+          patch -p1 < .ci/release-2.3.0-fix3.patch
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("app/build.gradle.kts")
+          s = p.read_text()
+          marker = "    buildFeatures { compose = true }"
+          lint_block = '    lint {\n        disable += "UnsafeOptInUsageError"\n    }\n\n'
+          if 'disable += "UnsafeOptInUsageError"' not in s:
+              if marker not in s:
+                  raise SystemExit("buildFeatures marker missing")
+              s = s.replace(marker, lint_block + marker)
+          p.write_text(s)
           PY
+          rm -f app/src/main/res/drawable-nodpi/ic_launcher_foreground.png
+          cp .ci/release-2.3.0-ci-debug.keystore app/ci-debug.keystore
+          grep -q 'applicationId = "com.embyplayernext.he"' app/build.gradle.kts
+          grep -q 'versionName = "2.3.0"' app/build.gradle.kts
+          ! grep -R -n 'com\.aistudio\.embyplayer\|jia\.hesip\|lac\.hesip\|emby-nginx' app/src/main app/build.gradle.kts
+
+      - name: Apply 2.3.1 TV and playback pass
+        shell: bash
+        run: |
+          base64 --decode .ci/release-2.3.1.patch.gz.b64 > /tmp/release-2.3.1.patch.gz
+          gzip -dc /tmp/release-2.3.1.patch.gz > /tmp/release-2.3.1.patch
+          echo "e439c4999930c3940340fe082a8cffbb49a0cdda60661ed719499dbebd40ed31  /tmp/release-2.3.1.patch" | sha256sum -c -
+          patch --dry-run -p1 < /tmp/release-2.3.1.patch
+          patch -p1 < /tmp/release-2.3.1.patch
+          grep -q 'versionCode = 124' app/build.gradle.kts
+          grep -q 'versionName = "2.3.1"' app/build.gradle.kts
+
+      - name: Apply 2.3.2 TV dialog and Rockchip decoder fixes
+        shell: bash
+        run: |
+          base64 --decode .ci/release-2.3.2.patch.gz.b64 > /tmp/release-2.3.2.patch.gz
+          gzip -dc /tmp/release-2.3.2.patch.gz > /tmp/release-2.3.2.patch
+          echo "c39ae05f361499d5ead46ea80a7233babac89d7416f155a303e58b575b1d82d5  /tmp/release-2.3.2.patch" | sha256sum -c -
+          patch --dry-run -p1 < /tmp/release-2.3.2.patch
+          patch -p1 < /tmp/release-2.3.2.patch
+          grep -q 'versionCode = 125' app/build.gradle.kts
+          grep -q 'versionName = "2.3.2"' app/build.gradle.kts
+
+      - name: Apply 2.3.3 hardware compatibility and txt diagnostics
+        shell: bash
+        run: |
+          base64 --decode .ci/release-2.3.3.patch.gz.b64 > /tmp/release-2.3.3.patch.gz
+          gzip -dc /tmp/release-2.3.3.patch.gz > /tmp/release-2.3.3.patch
+          echo "f29550232463d4ea7a9334a747da6e37db24ccd321ee191101149bce4814aff8  /tmp/release-2.3.3.patch" | sha256sum -c -
+          patch --dry-run -p1 < /tmp/release-2.3.3.patch
+          patch -p1 < /tmp/release-2.3.3.patch
+          grep -q 'versionCode = 126' app/build.gradle.kts
+          grep -q 'versionName = "2.3.3"' app/build.gradle.kts
+
+      - name: Apply 2.3.3 codec capability API fix
+        shell: bash
+        run: |
+          echo "858aa28cf6e9f3152da1422a75f6bc67e0a4fe2462be33eed0ae1599cfeefe2a  .ci/release-2.3.3-fix1.patch" | sha256sum -c -
+          patch --dry-run -p1 < .ci/release-2.3.3-fix1.patch
+          patch -p1 < .ci/release-2.3.3-fix1.patch
+
+      - name: Apply 2.3.4 Rockchip frame watchdog and real transcode recovery
+        shell: bash
+        run: |
+          cat \
+            .ci/release-2.3.4-v2.patch.gz.b64.part00 \
+            .ci/release-2.3.4-v2.patch.gz.b64.part01 \
+            .ci/release-2.3.4-v2.patch.gz.b64.part02 \
+            > /tmp/release-2.3.4-v2.patch.gz.b64
+          base64 --decode /tmp/release-2.3.4-v2.patch.gz.b64 > /tmp/release-2.3.4-v2.patch.gz
+          gzip -dc /tmp/release-2.3.4-v2.patch.gz > /tmp/release-2.3.4-v2.patch
+          echo "d2760da45d6b58e1daec7bb5eee13d5d9063a27e4db32664141bde8e272d7a7b  /tmp/release-2.3.4-v2.patch" | sha256sum -c -
+          patch --dry-run -p1 < /tmp/release-2.3.4-v2.patch
+          patch -p1 < /tmp/release-2.3.4-v2.patch
+          grep -q 'versionCode = 127' app/build.gradle.kts
+          grep -q 'versionName = "2.3.4"' app/build.gradle.kts
+          grep -q 'VideoFrameMetadataListener' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
+          grep -q 'videoFrameStall' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
+          grep -q 'EnableDirectPlay", false' app/src/main/java/com/embyplayernext/he/data/network/EmbyApiClient.kt
+
+      - name: Verify 2.3.4 release-pass metadata
+        shell: bash
+        run: |
+          grep -q 'namespace = "com.embyplayernext.he"' app/build.gradle.kts
+          grep -q 'applicationId = "com.embyplayernext.he"' app/build.gradle.kts
+          grep -q 'versionCode = 127' app/build.gradle.kts
+          grep -q 'versionName = "2.3.4"' app/build.gradle.kts
+          grep -q 'android:screenOrientation="unspecified"' app/src/main/AndroidManifest.xml
+          grep -q 'android.intent.category.LEANBACK_LAUNCHER' app/src/main/AndroidManifest.xml
+          grep -q 'android.hardware.touchscreen' app/src/main/AndroidManifest.xml
+          test -s app/src/main/res/drawable/ic_launcher_foreground.xml
+          test -s app/ci-debug.keystore
+          ! grep -R -n 'com\.aistudio\.embyplayer\|jia\.hesip\|lac\.hesip\|emby-nginx' app/src/main app/build.gradle.kts
+
+      - name: Apply 2.3.5 Dangbei startup compatibility
+        shell: bash
+        run: |
+          git apply --check .ci/release-2.3.5-dangbei-startup.patch
+          git apply .ci/release-2.3.5-dangbei-startup.patch
+          grep -q 'versionCode = 128' app/build.gradle.kts
+          grep -q 'versionName = "2.3.5"' app/build.gradle.kts
+          grep -q 'VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
+          grep -q 'dangbeiStartupCompat' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
+          grep -q 'CodecInput' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
+
+      - name: Verify 2.3.5 startup-path metadata
+        shell: bash
+        run: |
+          grep -q 'namespace = "com.embyplayernext.he"' app/build.gradle.kts
+          grep -q 'applicationId = "com.embyplayernext.he"' app/build.gradle.kts
+          grep -q 'versionCode = 128' app/build.gradle.kts
+          grep -q 'versionName = "2.3.5"' app/build.gradle.kts
+          grep -q 'VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
+          grep -q 'CodecInput' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
+
+      - name: Apply 2.3.6 fatal playback diagnostics
+        shell: bash
+        run: |
+          python3 .ci/release-2.3.6-error-diagnostics.py
+          grep -q 'versionCode = 129' app/build.gradle.kts
+          grep -q 'versionName = "2.3.6"' app/build.gradle.kts
+          grep -q 'PlayerErrorService' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
+          grep -q 'LoadError' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
+          grep -q '"PlayerError"' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
+          grep -q 'uiCompat=' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
+
+      - name: Apply 2.3.7 LibVLC playback engine
+        shell: bash
+        run: |
+          cp .ci/overlay/app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
+          python3 .ci/release-2.3.7-libvlc.py
+          grep -q 'versionCode = 130' app/build.gradle.kts
+          grep -q 'versionName = "2.3.7"' app/build.gradle.kts
+          grep -q 'org.videolan.android:libvlc-all:3.6.5' app/build.gradle.kts
+          grep -q 'abiFilters += listOf("arm64-v8a")' app/build.gradle.kts
+          grep -q 'playbackEngine' app/src/main/java/com/embyplayernext/he/data/model/Models.kt
+          grep -q 'playback_engine' app/src/main/java/com/embyplayernext/he/data/prefs/AppPreferences.kt
+          grep -q 'LibVlcPlayerScreen' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
+
+      - name: Apply 2.3.8 VLC layout and Media3 baseline restore
+        shell: bash
+        run: |
+          cp .ci/overlay/app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
+          python3 .ci/release-2.3.8-vlc-ui.py
+          grep -q 'versionCode = 131' app/build.gradle.kts
+          grep -q 'versionName = "2.3.8"' app/build.gradle.kts
+          grep -q 'media3Baseline=true' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
+          ! grep -q 'setVideoChangeFrameRateStrategy' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
+          grep -q 'setWindowSize' app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
+          grep -q 'player.scale = 0f' app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
+      - name: Apply 2.3.9 shared controls and Media3 thread fix
+        shell: bash
+        run: |
+          cp .ci/overlay/app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
+          cp .ci/overlay/app/src/main/java/com/embyplayernext/he/ui/screens/SharedPlayerControls.kt app/src/main/java/com/embyplayernext/he/ui/screens/SharedPlayerControls.kt
+          python3 .ci/release-2.3.9-shared-controls.py
+          grep -q 'versionCode = 132' app/build.gradle.kts
+          grep -q 'versionName = "2.3.9"' app/build.gradle.kts
+          grep -q 'videoFrameMediaId' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
+          ! grep -q 'posMs=\$currentPosition state=\$playbackState isPlaying=\$isPlaying' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
+          grep -q 'SharedPlayerControls' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
+      - name: Apply 2.3.10 restored shared player UI
+        shell: bash
+        run: |
+          cp .ci/overlay/app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
+          cp .ci/overlay/app/src/main/java/com/embyplayernext/he/ui/screens/SharedPlayerControls.kt app/src/main/java/com/embyplayernext/he/ui/screens/SharedPlayerControls.kt
+          python3 .ci/release-2.3.10-player-ui.py
+          grep -q 'versionCode = 133' app/build.gradle.kts
+          grep -q 'versionName = "2.3.10"' app/build.gradle.kts
+          grep -q 'sharedAudioTracks' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
+          grep -q 'TrackSelectionOverride' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
+          grep -q 'player.audioTracks' app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
+          grep -q '选择播放倍速' app/src/main/java/com/embyplayernext/he/ui/screens/SharedPlayerControls.kt
+      - name: Apply 2.3.11 legacy player UI restoration
+        shell: bash
+        run: |
+          cp .ci/overlay/app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
+          cp .ci/overlay/app/src/main/java/com/embyplayernext/he/ui/screens/SharedPlayerControls.kt app/src/main/java/com/embyplayernext/he/ui/screens/SharedPlayerControls.kt
+          python3 .ci/release-2.3.11-legacy-ui.py
+          grep -q 'versionCode = 134' app/build.gradle.kts
+          grep -q 'versionName = "2.3.11"' app/build.gradle.kts
+          grep -q 'surfaceGesturesEnabled = false' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
+          grep -q 'TrafficStats.getUidRxBytes' app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
+          grep -q 'KEYCODE_DPAD_LEFT' app/src/main/java/com/embyplayernext/he/ui/screens/SharedPlayerControls.kt
+          grep -q 'tryAwaitRelease' app/src/main/java/com/embyplayernext/he/ui/screens/SharedPlayerControls.kt
+      - name: Apply 2.3.12 exact final-2.3.3 player UI
+        shell: bash
+        run: |
+          cp .ci/overlay/app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
+          python3 .ci/release-2.3.12-final233-ui.py
+          grep -q 'versionCode = 135' app/build.gradle.kts
+          grep -q 'versionName = "2.3.12"' app/build.gradle.kts
+          grep -q 'PlayerTopChrome(' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
+          grep -q 'PlayerCenterControls(' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
+          grep -q 'PlayerBottomChrome(' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
+          ! grep -q 'SharedPlayerControls(' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
+          ! grep -q 'SharedPlayerControls(' app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
+          grep -q 'delay(if (isTv) 7000 else 4200)' app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
+          grep -q 'PlayerBottomChrome(' app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
+      - name: Apply 2.3.13 Rockchip seek and direct-play diagnostics
+        shell: bash
+        run: |
+          cp .ci/overlay/app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
+          python3 .ci/release-2.3.13-rk-seek-diagnostics.py
+          grep -q 'versionCode = 136' app/build.gradle.kts
+          grep -q 'versionName = "2.3.13"' app/build.gradle.kts
+          grep -q 'restart begin item=' app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
+          grep -q 'restart-after-playing' app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
+          grep -q 'suppressed=rk-hevc-diagnostic' app/src/main/java/com/embyplayernext/he/ui/EmbyViewModel.kt
+      - name: Apply 2.3.14 five-way playback experiment
+        shell: bash
+        run: |
+          cp .ci/overlay/app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
+          cp .ci/overlay/app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt
+          python3 .ci/release-2.3.14-five-way-experiment.py
+          grep -q 'versionCode = 137' app/build.gradle.kts
+          grep -q 'versionName = "2.3.14"' app/build.gradle.kts
+          grep -q 'vlcHardwareMode' app/src/main/java/com/embyplayernext/he/data/model/Models.kt
+          grep -q 'media3RockchipMode' app/src/main/java/com/embyplayernext/he/data/model/Models.kt
+          grep -q '五组对照模式' app/src/main/java/com/embyplayernext/he/ui/screens/SettingsScreen.kt
+          grep -q 'RockchipExperimentRenderersFactory' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
+          grep -q 'RKMediaFormat' app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt
+          grep -q 'no-mediacodec-dr' app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
+          grep -q 'experiment-' app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
+      - name: Apply 2.3.15 targeted Rockchip experiments
+        shell: bash
+        run: |
+          cp .ci/overlay/app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
+          cp .ci/overlay/app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt
+          cp .ci/overlay/app/src/main/java/com/embyplayernext/he/ui/screens/DirectCodecDiagnosticScreen.kt app/src/main/java/com/embyplayernext/he/ui/screens/DirectCodecDiagnosticScreen.kt
+          python3 .ci/release-2.3.15-targeted-rk-experiments.py
+          grep -q 'versionCode = 138' app/build.gradle.kts
+          grep -q 'versionName = "2.3.15"' app/build.gradle.kts
+          grep -q 'RKCodecReuse' app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt
+          grep -q 'generation=' app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt
+          grep -q 'recreate player item=' app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
+          grep -q 'DirectCodecDiagnosticScreen' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
+          grep -q 'DirectCodecFrame' app/src/main/java/com/embyplayernext/he/ui/screens/DirectCodecDiagnosticScreen.kt
+          grep -q '5/5 · DirectCodec' app/src/main/java/com/embyplayernext/he/ui/screens/SettingsScreen.kt
+      - name: Apply 2.3.16 DirectCodec UI and speed validation
+        shell: bash
+        run: |
+          cp .ci/overlay/app/src/main/java/com/embyplayernext/he/ui/screens/DirectCodecDiagnosticScreen.kt app/src/main/java/com/embyplayernext/he/ui/screens/DirectCodecDiagnosticScreen.kt
+          python3 .ci/release-2.3.16-directcodec-ui-speed.py
+          grep -q 'versionCode = 139' app/build.gradle.kts
+          grep -q 'versionName = "2.3.16"' app/build.gradle.kts
+          grep -q 'CancellationException' app/src/main/java/com/embyplayernext/he/ui/screens/DirectCodecDiagnosticScreen.kt
+          grep -q 'DirectCodecSpeed' app/src/main/java/com/embyplayernext/he/ui/screens/DirectCodecDiagnosticScreen.kt
+          grep -q 'SpeedPickerPage' app/src/main/java/com/embyplayernext/he/ui/screens/DirectCodecDiagnosticScreen.kt
+          grep -q 'playFocusRequester' app/src/main/java/com/embyplayernext/he/ui/screens/DirectCodecDiagnosticScreen.kt
+      - name: Apply 2.3.17 DirectCodec-style Media3 and ijk validation
+        shell: bash
+        run: |
+          cp .ci/overlay/app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt
+          cp .ci/overlay/app/src/main/java/com/embyplayernext/he/ui/screens/IjkPlayerDiagnosticScreen.kt app/src/main/java/com/embyplayernext/he/ui/screens/IjkPlayerDiagnosticScreen.kt
+          python3 .ci/release-2.3.17-renderer-ijk-cleanup.py
+          grep -q 'versionCode = 140' app/build.gradle.kts
+          grep -q 'versionName = "2.3.17"' app/build.gradle.kts
+          grep -q 'directcodec_renderer' app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt
+          grep -q 'RKDirectRenderer' app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt
+          grep -q 'IjkPlayerDiagnosticScreen' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
+          grep -q 'io.github.superjianpang:ijkplayer-java:0.0.2' app/build.gradle.kts
+          grep -q 'io.github.superjianpang:ijkplayer-arm64:0.0.2' app/build.gradle.kts
+          ! grep -q 'org.videolan.android:libvlc-all' app/build.gradle.kts
+          ! test -e app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
+          ! grep -R -n 'LibVlcPlayerScreen\|vlcHardwareMode' app/src/main app/build.gradle.kts
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -76,14 +427,32 @@ jobs:
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Build debug APK
-        run: gradle --no-daemon --stacktrace :app:assembleDebug
+      - name: Verify and build candidate
+        run: gradle --no-daemon --stacktrace :app:lintDebug :app:assembleDebug :app:assembleRelease
+
+      - name: Verify package and stable CI signature
+        shell: bash
+        run: |
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
+          grep -q "package: name='com.embyplayernext.he'" /tmp/badging.txt
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$APK" | tee /tmp/signature.txt
+          tr '[:upper:]' '[:lower:]' < /tmp/signature.txt | tr -d ':' | grep -q '9f72c5f3666451dd793a41079a3d8cf21f5ae82f9800d574583ec8db93228e8a'
 
       - name: Upload debug APK
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.1.0-debug
+          name: EmbyPlayerNext-v2.3.17-arm64-debug
           path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload unsigned release APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: EmbyPlayerNext-v2.3.17-arm64-release-unsigned
+          path: app/build/outputs/apk/release/app-release-unsigned.apk
           if-no-files-found: ignore
           retention-days: 14

@@ -1,0 +1,10 @@
+--- a/app/src/main/java/com/aistudio/embyplayer/ui/components/MediaCards.kt
++++ b/app/src/main/java/com/aistudio/embyplayer/ui/components/MediaCards.kt
+@@ -3,6 +3,7 @@
+ import androidx.compose.foundation.background
+ import androidx.compose.foundation.clickable
+ import androidx.compose.foundation.layout.*
++import androidx.compose.foundation.shape.CircleShape
+ import androidx.compose.foundation.shape.RoundedCornerShape
+ import androidx.compose.material.icons.Icons
+ import androidx.compose.material.icons.filled.*

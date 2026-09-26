@@ -1,5 +1,6 @@
 package com.aistudio.embyplayer.ui.theme
 
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
@@ -10,24 +11,23 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.shape.RoundedCornerShape
 
 private val Dark = darkColorScheme(
-    primary = Color(0xFF52B54B),
-    onPrimary = Color(0xFF081108),
-    primaryContainer = Color(0xFF193D1B),
-    onPrimaryContainer = Color(0xFFC8F4C5),
-    secondary = Color(0xFF9DD79A),
-    tertiary = Color(0xFF76D1C7),
-    background = Color(0xFF090D10),
-    surface = Color(0xFF0F1519),
-    surfaceVariant = Color(0xFF192126),
-    surfaceContainer = Color(0xFF121A1F),
-    surfaceContainerHigh = Color(0xFF1A2329),
-    onBackground = Color(0xFFF2F6F4),
-    onSurface = Color(0xFFF2F6F4),
-    onSurfaceVariant = Color(0xFFB6C2BE),
-    outline = Color(0xFF45534F),
+    primary = Color(0xFF5BC65B),
+    onPrimary = Color(0xFF071007),
+    primaryContainer = Color(0xFF173B1A),
+    onPrimaryContainer = Color(0xFFC9F6C7),
+    secondary = Color(0xFFA4DFA2),
+    tertiary = Color(0xFF79D5CA),
+    background = Color(0xFF070B0E),
+    surface = Color(0xFF0D1317),
+    surfaceVariant = Color(0xFF182126),
+    surfaceContainer = Color(0xFF11191E),
+    surfaceContainerHigh = Color(0xFF182228),
+    onBackground = Color(0xFFF3F7F5),
+    onSurface = Color(0xFFF3F7F5),
+    onSurfaceVariant = Color(0xFFB8C4C0),
+    outline = Color(0xFF485751),
     error = Color(0xFFFFB4AB),
 )
 

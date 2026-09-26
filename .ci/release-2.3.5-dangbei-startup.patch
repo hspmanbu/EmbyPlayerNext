@@ -1,0 +1,57 @@
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -12,8 +12,8 @@ android {
+         applicationId = "com.embyplayernext.he"
+         minSdk = 26
+         targetSdk = 35
+-        versionCode = 127
+-        versionName = "2.3.4"
++        versionCode = 128
++        versionName = "2.3.5"
+     }
+ 
+     signingConfigs {
+diff --git a/app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt b/app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
+--- a/app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
++++ b/app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
+@@ -128,8 +128,17 @@ class PlaybackService : MediaSessionService() {
+         var lastVideoFrameRealtimeMs = 0L
+         var lastVideoFramePtsUs = C.TIME_UNSET
+         val mainHandler = Handler(Looper.getMainLooper())
++        val useDangbeiStartupCompat = isRockchip && config.hardwareCompatibilityMode
++        logger.log(
++            "Codec",
++            "dangbeiStartupCompat=$useDangbeiStartupCompat surfaceSetFrameRate=${if (useDangbeiStartupCompat) "disabled" else "media3-default"}"
++        )
+         val player = ExoPlayer.Builder(this, renderers)
+             .setTrackSelector(trackSelector)
++            .setVideoChangeFrameRateStrategy(
++                if (useDangbeiStartupCompat) C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF
++                else C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_ONLY_IF_SEAMLESS
++            )
+             .setMediaSourceFactory(mediaSourceFactory)
+             .setLoadControl(loadControl)
+             .build().apply {
+@@ -181,4 +190,21 @@ class PlaybackService : MediaSessionService() {
+                 addAnalyticsListener(object : AnalyticsListener {
++                    override fun onVideoInputFormatChanged(
++                        eventTime: AnalyticsListener.EventTime,
++                        format: androidx.media3.common.Format,
++                        decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?,
++                    ) {
++                        val csdSummary = format.initializationData.mapIndexed { index, bytes ->
++                            val head = bytes.take(24).joinToString("") { b ->
++                                "%02x".format(b.toInt() and 0xff)
++                            }
++                            "csd$index=${bytes.size}:$head"
++                        }.joinToString(",")
++                        logger.log(
++                            "CodecInput",
++                            "mime=${format.sampleMimeType} codecs=${format.codecs} size=${format.width}x${format.height} fps=${format.frameRate} maxInput=${format.maxInputSize} rotation=${format.rotationDegrees} color=${format.colorInfo} init=[$csdSummary] reuse=${decoderReuseEvaluation?.result}"
++                        )
++                    }
++
+                     override fun onVideoDecoderInitialized(
+                         eventTime: AnalyticsListener.EventTime,
+                         decoderName: String,
