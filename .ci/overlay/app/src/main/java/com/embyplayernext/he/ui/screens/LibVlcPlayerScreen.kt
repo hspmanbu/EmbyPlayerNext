@@ -5,6 +5,7 @@ import android.view.SurfaceView
 import android.view.View
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -72,6 +74,9 @@ fun LibVlcPlayerScreen(
     var dragging by remember { mutableStateOf(false) }
     var dragPositionMs by remember { mutableFloatStateOf(0f) }
     var speed by remember { mutableFloatStateOf(1f) }
+    var controlsVisible by remember { mutableStateOf(true) }
+    var locked by remember { mutableStateOf(false) }
+    var aspectMode by remember { mutableStateOf(0) }
 
     fun playbackUrl(): String {
         if (config.accessToken.isBlank()) return descriptor.streamUrl
@@ -244,16 +249,10 @@ fun LibVlcPlayerScreen(
         }
     }
 
-    BackHandler { exitPlayer() }
+    BackHandler { if (!locked) exitPlayer() }
 
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
+    Box(Modifier.fillMaxSize().background(Color.Black).pointerInput(locked) { detectTapGestures(onTap = { if (!locked) controlsVisible = !controlsVisible }) }) {
         AndroidView(factory = { surface }, modifier = Modifier.fillMaxSize())
-
-        Text(
-            text = "LibVLC · 强制硬解 · DirectPlay",
-            color = Color.White,
-            modifier = Modifier.align(Alignment.TopCenter).background(Color.Black.copy(alpha = 0.55f)).padding(8.dp),
-        )
 
         if (failed) {
             Text(
@@ -263,54 +262,44 @@ fun LibVlcPlayerScreen(
             )
         }
 
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.BottomCenter)
-                .background(Color.Black.copy(alpha = 0.60f))
-                .padding(8.dp),
-        ) {
-            if (durationMs > 0) {
-                Slider(
-                    value = if (dragging) dragPositionMs else positionMs.toFloat().coerceIn(0f, durationMs.toFloat()),
-                    onValueChange = {
-                        dragging = true
-                        dragPositionMs = it
-                    },
-                    onValueChangeFinished = {
-                        seekTo(dragPositionMs.toLong())
-                        dragging = false
-                    },
-                    valueRange = 0f..durationMs.toFloat(),
-                )
-            }
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Button(onClick = { exitPlayer() }) { Text("返回") }
-                Button(onClick = { seekTo(positionMs - config.rewindSeconds * 1000L) }) {
-                    Text("-${config.rewindSeconds}s")
+        SharedPlayerControls(
+            title = descriptor.item.name,
+            engineLabel = "LibVLC · 强制硬解",
+            visible = controlsVisible,
+            locked = locked,
+            positionMs = if (dragging) dragPositionMs.toLong() else positionMs,
+            durationMs = durationMs,
+            isPlaying = playing,
+            rewindSeconds = config.rewindSeconds,
+            forwardSeconds = config.forwardSeconds,
+            audioEnabled = false,
+            subtitleEnabled = false,
+            onBack = { exitPlayer() },
+            onToggleLock = { locked = !locked },
+            onSeek = { seekTo(it) },
+            onTogglePlay = { if (player.isPlaying) player.pause() else player.play() },
+            onSpeed = {
+                speed = when (speed) {
+                    1f -> 1.25f
+                    1.25f -> 1.5f
+                    1.5f -> 2f
+                    else -> 1f
                 }
-                Button(onClick = { if (player.isPlaying) player.pause() else player.play() }) {
-                    Text(if (playing) "暂停" else "播放")
-                }
-                Button(onClick = { seekTo(positionMs + config.forwardSeconds * 1000L) }) {
-                    Text("+${config.forwardSeconds}s")
-                }
-                Button(onClick = {
-                    speed = when (speed) {
-                        1f -> 1.25f
-                        1.25f -> 1.5f
-                        1.5f -> 2f
-                        else -> 1f
+                runCatching { player.rate = speed }
+                logger.log("LibVLC", "rate item=${descriptor.item.id} rate=$speed")
+            },
+            onAudio = {},
+            onSubtitle = {},
+            onAspect = {
+                aspectMode = (aspectMode + 1) % 3
+                runCatching {
+                    when (aspectMode) {
+                        0 -> { player.aspectRatio = null; player.scale = 0f }
+                        1 -> { player.aspectRatio = "16:9"; player.scale = 0f }
+                        else -> { player.aspectRatio = null; player.scale = 1f }
                     }
-                    runCatching { player.rate = speed }
-                    logger.log("LibVLC", "rate item=${descriptor.item.id} rate=$speed")
-                }) { Text("${speed}x") }
-                Text(
-                    "${positionMs / 1000}s / ${if (durationMs > 0) durationMs / 1000 else 0}s",
-                    color = Color.White,
-                    modifier = Modifier.weight(1f).padding(start = 10.dp),
-                )
-            }
-        }
+                }
+            },
+        )
     }
 }
