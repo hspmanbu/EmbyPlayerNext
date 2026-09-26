@@ -273,7 +273,7 @@ jobs:
           python3 .ci/release-2.3.7-libvlc.py
           grep -q 'versionCode = 130' app/build.gradle.kts
           grep -q 'versionName = "2.3.7"' app/build.gradle.kts
-          grep -q 'org.videolan.android:libvlc-all:3.7.6' app/build.gradle.kts
+          grep -q 'org.videolan.android:libvlc-all:3.7.5' app/build.gradle.kts
           grep -q 'playbackEngine' app/src/main/java/com/embyplayernext/he/data/model/Models.kt
           grep -q 'playback_engine' app/src/main/java/com/embyplayernext/he/data/prefs/AppPreferences.kt
           grep -q 'LibVlcPlayerScreen' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
