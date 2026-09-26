@@ -79,6 +79,7 @@ fun SharedPlayerControls(
     onSelectSubtitle: (String) -> Unit,
     onAspect: () -> Unit,
     onSetVisible: (Boolean) -> Unit = {},
+    surfaceGesturesEnabled: Boolean = true,
 ) {
     var speedDialog by remember { mutableStateOf(false) }
     var audioDialog by remember { mutableStateOf(false) }
@@ -92,12 +93,11 @@ fun SharedPlayerControls(
     val safeDuration = durationMs.coerceAtLeast(0L)
     val safePosition = if (safeDuration > 0) positionMs.coerceIn(0L, safeDuration) else positionMs.coerceAtLeast(0L)
 
-    Box(
-        Modifier
-            .fillMaxSize()
-            .focusRequester(focusRequester)
-            .focusable()
-            .onPreviewKeyEvent { event ->
+    var rootModifier = Modifier
+        .fillMaxSize()
+        .focusRequester(focusRequester)
+        .focusable()
+        .onPreviewKeyEvent { event ->
                 if (event.nativeKeyEvent.action != KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent false
                 when (event.nativeKeyEvent.keyCode) {
                     KeyEvent.KEYCODE_DPAD_LEFT -> {
@@ -128,6 +128,9 @@ fun SharedPlayerControls(
                     else -> false
                 }
             }
+
+    if (surfaceGesturesEnabled) {
+        rootModifier = rootModifier
             .pointerInput(locked, safePosition, safeDuration) {
                 var totalX = 0f
                 detectDragGestures(
@@ -156,9 +159,11 @@ fun SharedPlayerControls(
                         }
                     },
                 )
-            },
-    ) {
-        if (!locked) {
+            }
+    }
+
+    Box(rootModifier) {
+        if (!locked && surfaceGesturesEnabled) {
             Box(
                 Modifier
                     .fillMaxHeight()
