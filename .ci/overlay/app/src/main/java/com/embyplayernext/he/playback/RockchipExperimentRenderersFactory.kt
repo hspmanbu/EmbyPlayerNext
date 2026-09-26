@@ -103,13 +103,12 @@ private class RockchipExperimentVideoRenderer(
         codecInfo: MediaCodecInfo,
         oldFormat: Format,
         newFormat: Format,
-        isAdaptiveFormatChange: Boolean,
     ): DecoderReuseEvaluation {
         val mode = experimentMode()
         if (isTarget(newFormat) && mode != "default") {
             logger.log(
                 "RKCodecReuse",
-                "mode=$mode decoder=${codecInfo.name} forced=false old=${oldFormat.width}x${oldFormat.height}@${oldFormat.frameRate} new=${newFormat.width}x${newFormat.height}@${newFormat.frameRate} adaptive=$isAdaptiveFormatChange",
+                "mode=$mode decoder=${codecInfo.name} forced=false old=${oldFormat.width}x${oldFormat.height}@${oldFormat.frameRate} new=${newFormat.width}x${newFormat.height}@${newFormat.frameRate}",
             )
             return DecoderReuseEvaluation(
                 codecInfo.name,
@@ -119,7 +118,7 @@ private class RockchipExperimentVideoRenderer(
                 DecoderReuseEvaluation.DISCARD_REASON_APP_OVERRIDE,
             )
         }
-        return super.canReuseCodec(codecInfo, oldFormat, newFormat, isAdaptiveFormatChange)
+        return super.canReuseCodec(codecInfo, oldFormat, newFormat)
     }
 
     override fun getCodecOperatingRateV23(
