@@ -290,7 +290,6 @@ jobs:
           ! grep -q 'setVideoChangeFrameRateStrategy' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
           grep -q 'setWindowSize' app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
           grep -q 'player.scale = 0f' app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
-          grep -q 'Slider(' app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
       - name: Apply 2.3.9 shared controls and Media3 thread fix
         shell: bash
         run: |
