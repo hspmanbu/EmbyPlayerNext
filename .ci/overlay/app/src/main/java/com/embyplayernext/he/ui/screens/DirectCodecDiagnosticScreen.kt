@@ -34,6 +34,8 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -43,6 +45,7 @@ import com.embyplayernext.he.util.DiagnosticsLogger
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -82,6 +85,9 @@ fun DirectCodecDiagnosticScreen(
     var scrubFraction by remember { mutableStateOf<Float?>(null) }
     var uiTicker by remember { mutableLongStateOf(0L) }
     var networkSpeed by remember { mutableStateOf("0.00 MB/s") }
+    var controlsVisible by remember { mutableStateOf(true) }
+    var speed by remember { mutableFloatStateOf(1f) }
+    var speedDialog by remember { mutableStateOf(false) }
 
     val pausedAtomic = remember(descriptor.playSessionId) { AtomicBoolean(false) }
     val stopAtomic = remember(descriptor.playSessionId) { AtomicBoolean(false) }
@@ -89,7 +95,10 @@ fun DirectCodecDiagnosticScreen(
     val positionAtomic = remember(descriptor.playSessionId) { AtomicLong(0L) }
     val durationAtomic = remember(descriptor.playSessionId) { AtomicLong(durationMs) }
     val frameAtomic = remember(descriptor.playSessionId) { AtomicLong(0L) }
+    val speedMilliAtomic = remember(descriptor.playSessionId) { AtomicLong(1000L) }
+    val speedSerialAtomic = remember(descriptor.playSessionId) { AtomicLong(0L) }
     val focusRequester = remember { FocusRequester() }
+    val playFocusRequester = remember { FocusRequester() }
 
     fun playbackUrl(): String {
         if (config.accessToken.isBlank()) return descriptor.streamUrl
@@ -242,6 +251,7 @@ fun DirectCodecDiagnosticScreen(
                     var outputDone = false
                     var basePtsUs = Long.MIN_VALUE
                     var baseRealtimeNs = 0L
+                    var appliedSpeedSerial = speedSerialAtomic.get()
 
                     while (currentCoroutineContext().isActive && !stopAtomic.get() && !outputDone) {
                         if (pausedAtomic.get()) {
@@ -294,12 +304,20 @@ fun DirectCodecDiagnosticScreen(
                             }
                             else -> if (outputIndex >= 0) {
                                 val ptsUs = info.presentationTimeUs.coerceAtLeast(0L)
-                                if (basePtsUs == Long.MIN_VALUE) {
+                                val nowNs = System.nanoTime()
+                                val speedSerial = speedSerialAtomic.get()
+                                if (basePtsUs == Long.MIN_VALUE || speedSerial != appliedSpeedSerial) {
                                     basePtsUs = ptsUs
-                                    baseRealtimeNs = System.nanoTime() + 60_000_000L
+                                    baseRealtimeNs = nowNs + 60_000_000L
+                                    appliedSpeedSerial = speedSerial
+                                    logger.log(
+                                        "DirectCodecSpeed",
+                                        "apply item=${descriptor.item.id} speed=${speedMilliAtomic.get() / 1000f} ptsUs=$ptsUs serial=$speedSerial",
+                                    )
                                 }
-                                val renderNs = (baseRealtimeNs + (ptsUs - basePtsUs).coerceAtLeast(0L) * 1000L)
-                                    .coerceAtLeast(System.nanoTime())
+                                val speedValue = (speedMilliAtomic.get().coerceAtLeast(250L) / 1000.0)
+                                val mediaDeltaNs = ((ptsUs - basePtsUs).coerceAtLeast(0L) * 1000.0 / speedValue).toLong()
+                                val renderNs = (baseRealtimeNs + mediaDeltaNs).coerceAtLeast(nowNs)
                                 mc.releaseOutputBuffer(outputIndex, renderNs)
 
                                 val currentPositionMs = ptsUs / 1000L
@@ -342,6 +360,12 @@ fun DirectCodecDiagnosticScreen(
                 }
             }
             if (!stopAtomic.get()) ended = true
+        } catch (cancel: CancellationException) {
+            logger.log(
+                "DirectCodec",
+                "coroutineCancelled item=${descriptor.item.id} type=${cancel.javaClass.simpleName} message=${cancel.message}",
+            )
+            throw cancel
         } catch (t: Throwable) {
             failed = "${t.javaClass.simpleName}: ${t.message ?: "unknown"}"
             logger.log(
@@ -398,6 +422,18 @@ fun DirectCodecDiagnosticScreen(
         runCatching { focusRequester.requestFocus() }
     }
 
+    LaunchedEffect(controlsVisible, isTv, playing, speedDialog) {
+        if (controlsVisible && isTv && !speedDialog) {
+            delay(80)
+            runCatching { playFocusRequester.requestFocus() }
+        }
+        if (controlsVisible && isTv && playing && !speedDialog) {
+            delay(7000)
+            controlsVisible = false
+            runCatching { focusRequester.requestFocus() }
+        }
+    }
+
     Box(
         Modifier
             .fillMaxSize()
@@ -407,21 +443,45 @@ fun DirectCodecDiagnosticScreen(
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 when (event.key) {
-                    Key.DirectionLeft -> {
-                        requestSeek(positionAtomic.get() - config.rewindSeconds * 1000L)
-                        true
-                    }
-                    Key.DirectionRight -> {
-                        requestSeek(positionAtomic.get() + config.forwardSeconds * 1000L)
-                        true
-                    }
-                    Key.Enter, Key.DirectionCenter, Key.MediaPlayPause -> {
+                    Key.MediaPlayPause -> {
                         playing = !playing
                         pausedAtomic.set(!playing)
+                        controlsVisible = true
                         true
+                    }
+                    Key.MediaFastForward -> {
+                        requestSeek(positionAtomic.get() + config.forwardSeconds * 1000L)
+                        controlsVisible = true
+                        true
+                    }
+                    Key.MediaRewind -> {
+                        requestSeek(positionAtomic.get() - config.rewindSeconds * 1000L)
+                        controlsVisible = true
+                        true
+                    }
+                    Key.DirectionLeft -> {
+                        if (!controlsVisible) {
+                            requestSeek(positionAtomic.get() - config.rewindSeconds * 1000L)
+                            controlsVisible = true
+                            true
+                        } else false
+                    }
+                    Key.DirectionRight -> {
+                        if (!controlsVisible) {
+                            requestSeek(positionAtomic.get() + config.forwardSeconds * 1000L)
+                            controlsVisible = true
+                            true
+                        } else false
+                    }
+                    Key.DirectionUp, Key.DirectionDown, Key.Enter, Key.DirectionCenter -> {
+                        if (!controlsVisible) {
+                            controlsVisible = true
+                            true
+                        } else false
                     }
                     else -> false
                 }
+            }
             },
     ) {
         AndroidView(
@@ -429,15 +489,16 @@ fun DirectCodecDiagnosticScreen(
             modifier = Modifier.fillMaxSize(),
         )
 
-        PlayerTopChrome(
-            item = descriptor.item,
-            networkSpeed = networkSpeed,
-            locked = false,
-            onBack = ::exit,
-            modifier = Modifier.align(Alignment.TopCenter),
-        )
+        if (controlsVisible) {
+            PlayerTopChrome(
+                item = descriptor.item,
+                networkSpeed = networkSpeed,
+                locked = false,
+                onBack = ::exit,
+                modifier = Modifier.align(Alignment.TopCenter),
+            )
 
-        PlayerCenterControls(
+            PlayerCenterControls(
             compact = !isLandscape,
             locked = false,
             isPlaying = playing,
@@ -452,7 +513,7 @@ fun DirectCodecDiagnosticScreen(
             },
             onForward = { requestSeek(positionAtomic.get() + config.forwardSeconds * 1000L) },
             onNext = {},
-            playFocusRequester = focusRequester,
+            playFocusRequester = playFocusRequester,
             remoteMode = isTv && isLandscape,
             modifier = Modifier.align(Alignment.Center),
         )
@@ -462,7 +523,7 @@ fun DirectCodecDiagnosticScreen(
             position = positionMs,
             duration = durationMs,
             scrubFraction = scrubFraction,
-            speed = 1f,
+            speed = speed,
             audioLabel = "无音频·诊断",
             subtitleLabel = "关闭",
             aspect = AspectMode.FIT,
@@ -472,7 +533,10 @@ fun DirectCodecDiagnosticScreen(
                 if (durationMs > 0 && value != null) requestSeek((value * durationMs).toLong())
                 scrubFraction = null
             },
-            onSpeed = {},
+            onSpeed = {
+                speedDialog = true
+                controlsVisible = true
+            },
             onAudio = {},
             onSubtitle = {},
             onAspect = {},
@@ -485,13 +549,8 @@ fun DirectCodecDiagnosticScreen(
             onMore = {},
             remoteMode = isTv && isLandscape,
             modifier = Modifier.align(Alignment.BottomCenter),
-        )
-
-        Text(
-            text = "DirectCodec · Dangbei-like · 视频诊断 · frames=$frameCount",
-            color = Color.White,
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 72.dp),
-        )
+            )
+        }
 
         if (!surfaceReady || (!started && failed == null)) {
             CircularProgressIndicator(Modifier.align(Alignment.Center))
@@ -503,6 +562,35 @@ fun DirectCodecDiagnosticScreen(
                 color = Color.White,
                 modifier = Modifier.align(Alignment.Center).padding(24.dp),
             )
+        }
+    }
+
+    if (speedDialog) {
+        Dialog(
+            onDismissRequest = { speedDialog = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth(if (isTv || isLandscape) .78f else .96f)
+                    .fillMaxHeight(if (isTv || isLandscape) .78f else .86f),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
+            ) {
+                SpeedPickerPage(
+                    speed = speed,
+                    remoteMode = isTv || isLandscape,
+                    onSpeed = { value ->
+                        speed = value
+                        speedMilliAtomic.set((value * 1000f).toLong())
+                        val serial = speedSerialAtomic.incrementAndGet()
+                        logger.log("DirectCodecSpeed", "request item=${descriptor.item.id} speed=$value serial=$serial")
+                        speedDialog = false
+                        controlsVisible = true
+                    },
+                    onBack = { speedDialog = false },
+                    onDone = { speedDialog = false },
+                )
+            }
         }
     }
 }
