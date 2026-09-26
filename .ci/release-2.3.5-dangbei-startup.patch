@@ -15,7 +15,7 @@ diff --git a/app/build.gradle.kts b/app/build.gradle.kts
 diff --git a/app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt b/app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
 --- a/app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
 +++ b/app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
-@@ -128,8 +128,16 @@ class PlaybackService : MediaSessionService() {
+@@ -128,8 +128,17 @@ class PlaybackService : MediaSessionService() {
          var lastVideoFrameRealtimeMs = 0L
          var lastVideoFramePtsUs = C.TIME_UNSET
          val mainHandler = Handler(Looper.getMainLooper())
