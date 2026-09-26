@@ -55,10 +55,11 @@ service.write_text(s)
 
 player = Path("app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt")
 s = player.read_text()
-controls_name = "controlsVisible" if "if(controlsVisible || locked)" in s else "controls"
-start_marker = f"        if({controls_name} || locked) {{"
-start = s.find(start_marker)
-if start < 0: raise SystemExit("Media3 controls block start not found")
+import re
+m = re.search(r"        if\s*\(\s*(controlsVisible|controls)\s*\|\|\s*locked\s*\)\s*\{", s)
+if not m: raise SystemExit("Media3 controls block start not found")
+controls_name = m.group(1)
+start = m.start()
 end = s.find("        error?.let", start)
 if end < 0: raise SystemExit("Media3 controls block end not found")
 shared = f'''        SharedPlayerControls(
