@@ -291,6 +291,18 @@ jobs:
           grep -q 'setWindowSize' app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
           grep -q 'player.scale = 0f' app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
           grep -q 'Slider(' app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
+      - name: Apply 2.3.9 shared controls and Media3 thread fix
+        shell: bash
+        run: |
+          cp .ci/overlay/app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
+          cp .ci/overlay/app/src/main/java/com/embyplayernext/he/ui/screens/SharedPlayerControls.kt app/src/main/java/com/embyplayernext/he/ui/screens/SharedPlayerControls.kt
+          python3 .ci/release-2.3.9-shared-controls.py
+          grep -q 'versionCode = 132' app/build.gradle.kts
+          grep -q 'versionName = "2.3.9"' app/build.gradle.kts
+          grep -q 'videoFrameMediaId' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
+          ! grep -q 'posMs=\$currentPosition state=\$playbackState isPlaying=\$isPlaying' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
+          grep -q 'SharedPlayerControls' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
+          grep -q 'SharedPlayerControls' app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
@@ -327,7 +339,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.8-arm64-debug
+          name: EmbyPlayerNext-v2.3.9-arm64-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: ignore
           retention-days: 14
@@ -336,7 +348,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.8-arm64-release-unsigned
+          name: EmbyPlayerNext-v2.3.9-arm64-release-unsigned
           path: app/build/outputs/apk/release/app-release-unsigned.apk
           if-no-files-found: ignore
           retention-days: 14
