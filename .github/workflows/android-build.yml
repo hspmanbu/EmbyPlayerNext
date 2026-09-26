@@ -255,6 +255,17 @@ jobs:
           grep -q 'VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
           grep -q 'CodecInput' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
 
+      - name: Apply 2.3.6 fatal playback diagnostics
+        shell: bash
+        run: |
+          python3 .ci/release-2.3.6-error-diagnostics.py
+          grep -q 'versionCode = 129' app/build.gradle.kts
+          grep -q 'versionName = "2.3.6"' app/build.gradle.kts
+          grep -q 'PlayerErrorService' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
+          grep -q 'LoadError' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
+          grep -q '"PlayerError"' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
+          grep -q 'uiCompat=' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
+
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
@@ -291,7 +302,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.5-debug
+          name: EmbyPlayerNext-v2.3.6-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: ignore
           retention-days: 14
@@ -300,7 +311,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.5-release-unsigned
+          name: EmbyPlayerNext-v2.3.6-release-unsigned
           path: app/build/outputs/apk/release/app-release-unsigned.apk
           if-no-files-found: ignore
           retention-days: 14
