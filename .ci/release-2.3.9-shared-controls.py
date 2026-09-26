@@ -73,13 +73,24 @@ shared = f'''        SharedPlayerControls(
             networkSpeed = networkSpeed,
             rewindSeconds = config.rewindSeconds,
             forwardSeconds = config.forwardSeconds,
+            audioEnabled = false,
+            subtitleEnabled = false,
             onBack = {{ exit() }},
             onToggleLock = {{ locked = !locked }},
             onSeek = {{ controller?.seekTo(it) }},
             onTogglePlay = {{ if (controller?.isPlaying == true) controller.pause() else controller?.play() }},
-            onSpeed = {{ speedDialog = true }},
-            onAudio = {{ audioDialog = true }},
-            onSubtitle = {{ subtitleDialog = true }},
+            onSpeed = {{
+                val currentSpeed = controller?.playbackParameters?.speed ?: 1f
+                val nextSpeed = when {{
+                    currentSpeed < 1.24f -> 1.25f
+                    currentSpeed < 1.49f -> 1.5f
+                    currentSpeed < 1.99f -> 2f
+                    else -> 1f
+                }}
+                controller?.setPlaybackSpeed(nextSpeed)
+            }},
+            onAudio = {{}},
+            onSubtitle = {{}},
             onAspect = {{ aspect = AspectMode.entries[(aspect.ordinal + 1) % AspectMode.entries.size] }},
         )
 '''
