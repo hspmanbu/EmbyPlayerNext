@@ -33,10 +33,7 @@ diff --git a/app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
              .setMediaSourceFactory(mediaSourceFactory)
              .setLoadControl(loadControl)
              .build().apply {
-@@ -168,7 +176,24 @@ class PlaybackService : MediaSessionService() {
-                         mainHandler.post { mediaSession?.setSessionExtras(extras) }
-                     }
-                 })
+@@ -181,4 +190,21 @@ class PlaybackService : MediaSessionService() {
                  addAnalyticsListener(object : AnalyticsListener {
 +                    override fun onVideoInputFormatChanged(
 +                        eventTime: AnalyticsListener.EventTime,
