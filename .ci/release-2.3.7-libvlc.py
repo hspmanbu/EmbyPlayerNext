@@ -13,6 +13,17 @@ s = replace_once(s, 'versionName = "2.3.6"', 'versionName = "2.3.7"', "versionNa
 dep_marker = '    implementation("androidx.media3:media3-datasource-okhttp:$media3")\n'
 if 'org.videolan.android:libvlc-all' not in s:
     s = replace_once(s, dep_marker, dep_marker + '    implementation("org.videolan.android:libvlc-all:3.6.5")\n', "libvlc dependency")
+
+default_marker = '''        versionName = "2.3.7"
+    }
+'''
+default_replacement = '''        versionName = "2.3.7"
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
+    }
+'''
+s = replace_once(s, default_marker, default_replacement, "arm64 abi filter")
 build.write_text(s)
 
 models = Path("app/src/main/java/com/embyplayernext/he/data/model/Models.kt")
