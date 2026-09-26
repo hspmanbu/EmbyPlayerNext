@@ -97,7 +97,8 @@ fun LibVlcPlayerScreen(
             arrayListOf("--verbose=2", "--network-caching=1500", "--file-caching=1500"),
         )
     }
-    val player = remember { MediaPlayer(libVlc) }
+    var player by remember { mutableStateOf(MediaPlayer(libVlc)) }
+    var playerGeneration by remember(descriptor.playSessionId) { mutableIntStateOf(0) }
     val surface = remember { SurfaceView(context).apply { isFocusable = false; isFocusableInTouchMode = false } }
 
     var started by remember(descriptor.playSessionId) { mutableStateOf(false) }
@@ -160,30 +161,38 @@ fun LibVlcPlayerScreen(
         positionMs = bounded
         buffering = true
         controlsVisible = true
+        val oldPlayer = player
+        val oldGeneration = playerGeneration
         logger.log(
             "LibVLCSeek",
-            "restart begin item=${descriptor.item.id} targetMs=$bounded rockchip=$isRockchip playing=${runCatching { player.isPlaying }.getOrDefault(false)}",
+            "recreate begin item=${descriptor.item.id} targetMs=$bounded oldGeneration=$oldGeneration rockchip=$isRockchip",
         )
-        runCatching { player.stop() }
+        runCatching { oldPlayer.setEventListener(null) }
+        runCatching { oldPlayer.stop() }
         runCatching {
-            val vout = player.vlcVout
-            if (vout.areViewsAttached()) vout.detachViews()
-            vout.setVideoView(surface)
-            vout.attachViews()
-            if (surface.width > 0 && surface.height > 0) vout.setWindowSize(surface.width, surface.height)
+            val oldVout = oldPlayer.vlcVout
+            if (oldVout.areViewsAttached()) oldVout.detachViews()
         }
-        val media = Media(libVlc, Uri.parse(playbackUrl()))
-        configureVlcMedia(media, "restart")
-        player.media = media
-        media.release()
-        player.play()
+        playerGeneration = oldGeneration + 1
+        player = MediaPlayer(libVlc)
+        logger.log(
+            "LibVLCSeek",
+            "recreate player item=${descriptor.item.id} targetMs=$bounded newGeneration=$playerGeneration",
+        )
     }
 
     fun seekTo(targetMs: Long) {
         val bounded = if (durationMs > 0) targetMs.coerceIn(0L, durationMs) else targetMs.coerceAtLeast(0L)
-        // 2.3.14 A/B: Direct and Copy use the same plain setTime() seek path.
-        // This keeps the only intended variable between the two VLC modes the direct-rendering option.
-        directSeekTo(bounded, "experiment-" + config.vlcHardwareMode)
+        if (
+            isRockchip &&
+            config.vlcHardwareMode.equals("direct", ignoreCase = true) &&
+            started &&
+            !ended
+        ) {
+            restartDecoderAt(bounded)
+        } else {
+            directSeekTo(bounded, "plain-" + config.vlcHardwareMode)
+        }
     }
 
     fun applyAspect() {
@@ -261,8 +270,17 @@ fun LibVlcPlayerScreen(
         }
     }
 
-    DisposableEffect(player, surface, descriptor.playSessionId) {
-        val vout = player.vlcVout
+    DisposableEffect(libVlc) {
+        onDispose {
+            logger.log("LibVLC", "libVlcRelease item=${descriptor.item.id}")
+            runCatching { libVlc.release() }
+        }
+    }
+
+    DisposableEffect(player, surface, descriptor.playSessionId, playerGeneration) {
+        val activePlayer = player
+        val activeGeneration = playerGeneration
+        val vout = activePlayer.vlcVout
         val layoutListener = View.OnLayoutChangeListener { _, left, top, right, bottom, _, _, _, _ ->
             val width = right - left
             val height = bottom - top
@@ -280,17 +298,17 @@ fun LibVlcPlayerScreen(
             applyAspect()
         }
 
-        player.setEventListener { event ->
+        activePlayer.setEventListener { event ->
             when (event.type) {
                 MediaPlayer.Event.Opening -> {
                     buffering = true
-                    logger.log("LibVLC", "event=Opening item=${descriptor.item.id}")
+                    logger.log("LibVLC", "event=Opening item=${descriptor.item.id} generation=$activeGeneration")
                 }
                 MediaPlayer.Event.Playing -> {
                     playing = true
                     buffering = false
                     ended = false
-                    runCatching { player.rate = speed }
+                    runCatching { activePlayer.rate = speed }
                     applyAspect()
                     val restartTarget = pendingRestartSeekMs
                     if (restartTarget != null) {
@@ -314,11 +332,11 @@ fun LibVlcPlayerScreen(
                                 delay(100)
                                 directSeekTo(requested, "initial-resume")
                             }
-                            positionMs = runCatching { player.time.coerceAtLeast(0L) }.getOrDefault(requested)
-                            durationMs = runCatching { player.length.coerceAtLeast(0L) }.getOrDefault(durationMs)
+                            positionMs = runCatching { activePlayer.time.coerceAtLeast(0L) }.getOrDefault(requested)
+                            durationMs = runCatching { activePlayer.length.coerceAtLeast(0L) }.getOrDefault(durationMs)
                             logger.log(
                                 "LibVLC",
-                                "event=Playing item=${descriptor.item.id} positionMs=$positionMs durationMs=$durationMs scale=${runCatching { player.scale }.getOrNull()} aspect=${runCatching { player.aspectRatio }.getOrNull()}",
+                                "event=Playing item=${descriptor.item.id} generation=$activeGeneration positionMs=$positionMs durationMs=$durationMs scale=${runCatching { activePlayer.scale }.getOrNull()} aspect=${runCatching { activePlayer.aspectRatio }.getOrNull()}",
                             )
                             onStart(descriptor, positionMs, durationMs.takeIf { it > 0 })
                         }
@@ -332,7 +350,7 @@ fun LibVlcPlayerScreen(
                 MediaPlayer.Event.Vout -> {
                     logger.log(
                         "LibVLC",
-                        "event=Vout item=${descriptor.item.id} positionMs=${runCatching { player.time }.getOrDefault(-1L)} surface=${surface.width}x${surface.height}",
+                        "event=Vout item=${descriptor.item.id} generation=$activeGeneration positionMs=${runCatching { activePlayer.time }.getOrDefault(-1L)} surface=${surface.width}x${surface.height}",
                     )
                 }
                 MediaPlayer.Event.EncounteredError -> {
@@ -340,7 +358,7 @@ fun LibVlcPlayerScreen(
                     buffering = false
                     playing = false
                     controlsVisible = true
-                    logger.log("LibVLC", "event=EncounteredError item=${descriptor.item.id} positionMs=${runCatching { player.time }.getOrDefault(-1L)}")
+                    logger.log("LibVLC", "event=EncounteredError item=${descriptor.item.id} positionMs=${runCatching { activePlayer.time }.getOrDefault(-1L)}")
                 }
                 MediaPlayer.Event.EndReached -> {
                     playing = false
@@ -350,8 +368,8 @@ fun LibVlcPlayerScreen(
                     if (!stopped) {
                         stopped = true
                         scope.launch {
-                            val p = runCatching { player.time.coerceAtLeast(0L) }.getOrDefault(positionMs)
-                            val d = runCatching { player.length }.getOrDefault(-1L).takeIf { it > 0 }
+                            val p = runCatching { activePlayer.time.coerceAtLeast(0L) }.getOrDefault(positionMs)
+                            val d = runCatching { activePlayer.length }.getOrDefault(-1L).takeIf { it > 0 }
                             logger.log("LibVLC", "event=EndReached item=${descriptor.item.id} positionMs=$p durationMs=$d")
                             onStopped(descriptor, p, d)
                         }
@@ -368,23 +386,23 @@ fun LibVlcPlayerScreen(
         onDispose {
             logger.log("LibVLC", "dispose item=${descriptor.item.id}")
             surface.removeOnLayoutChangeListener(layoutListener)
-            runCatching { player.setEventListener(null) }
-            runCatching { player.stop() }
+            runCatching { activePlayer.setEventListener(null) }
+            runCatching { activePlayer.stop() }
             runCatching { if (vout.areViewsAttached()) vout.detachViews() }
-            runCatching { player.release() }
-            runCatching { libVlc.release() }
+            runCatching { activePlayer.release() }
+            logger.log("LibVLC", "playerRelease item=${descriptor.item.id} generation=$activeGeneration")
         }
     }
 
-    LaunchedEffect(descriptor.streamUrl, descriptor.playSessionId) {
+    LaunchedEffect(descriptor.streamUrl, descriptor.playSessionId, playerGeneration) {
         failed = false
         ended = false
         buffering = true
         val media = Media(libVlc, Uri.parse(playbackUrl()))
-        configureVlcMedia(media, "initial")
+        configureVlcMedia(media, if (playerGeneration == 0) "initial" else "recreate-$playerGeneration")
         logger.log(
             "LibVLC",
-            "prepare item=${descriptor.item.id} method=${descriptor.playMethod} hwDecoder=true force=true vlcMode=${config.vlcHardwareMode} requestedMs=${descriptor.initialPositionMs} url=${descriptor.streamUrl.substringBefore('?')}",
+            "prepare item=${descriptor.item.id} generation=$playerGeneration method=${descriptor.playMethod} hwDecoder=true force=true vlcMode=${config.vlcHardwareMode} requestedMs=${descriptor.initialPositionMs} pendingSeekMs=${pendingRestartSeekMs ?: -1L} url=${descriptor.streamUrl.substringBefore('?')}",
         )
         player.media = media
         media.release()
