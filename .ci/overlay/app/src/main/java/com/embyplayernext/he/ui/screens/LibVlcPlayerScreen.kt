@@ -77,6 +77,8 @@ fun LibVlcPlayerScreen(
     var controlsVisible by remember { mutableStateOf(true) }
     var locked by remember { mutableStateOf(false) }
     var aspectMode by remember { mutableStateOf(0) }
+    var audioTracks by remember { mutableStateOf<List<PlayerTrackOption>>(emptyList()) }
+    var subtitleTracks by remember { mutableStateOf<List<PlayerTrackOption>>(emptyList()) }
 
     fun playbackUrl(): String {
         if (config.accessToken.isBlank()) return descriptor.streamUrl
@@ -230,6 +232,24 @@ fun LibVlcPlayerScreen(
                 positionMs = runCatching { player.time.coerceAtLeast(0L) }.getOrDefault(positionMs)
             }
             runCatching { player.length }.getOrDefault(-1L).takeIf { it > 0 }?.let { durationMs = it }
+            audioTracks = runCatching {
+                player.audioTracks?.map { track ->
+                    PlayerTrackOption(
+                        id = track.id.toString(),
+                        label = track.name ?: "音轨 " + track.id,
+                        selected = track.id == player.audioTrack,
+                    )
+                }.orEmpty()
+            }.getOrDefault(emptyList())
+            subtitleTracks = runCatching {
+                player.spuTracks?.map { track ->
+                    PlayerTrackOption(
+                        id = track.id.toString(),
+                        label = track.name ?: "字幕 " + track.id,
+                        selected = track.id == player.spuTrack,
+                    )
+                }.orEmpty()
+            }.getOrDefault(emptyList())
             heartbeat++
             if (heartbeat % 5 == 0) {
                 logger.log(
@@ -264,7 +284,6 @@ fun LibVlcPlayerScreen(
 
         SharedPlayerControls(
             title = descriptor.item.name,
-            engineLabel = "LibVLC · 强制硬解",
             visible = controlsVisible,
             locked = locked,
             positionMs = if (dragging) dragPositionMs.toLong() else positionMs,
@@ -272,24 +291,28 @@ fun LibVlcPlayerScreen(
             isPlaying = playing,
             rewindSeconds = config.rewindSeconds,
             forwardSeconds = config.forwardSeconds,
-            audioEnabled = false,
-            subtitleEnabled = false,
+            playbackSpeed = speed,
+            audioTracks = audioTracks,
+            subtitleTracks = subtitleTracks,
             onBack = { exitPlayer() },
             onToggleLock = { locked = !locked },
             onSeek = { seekTo(it) },
             onTogglePlay = { if (player.isPlaying) player.pause() else player.play() },
-            onSpeed = {
-                speed = when (speed) {
-                    1f -> 1.25f
-                    1.25f -> 1.5f
-                    1.5f -> 2f
-                    else -> 1f
-                }
-                runCatching { player.rate = speed }
-                logger.log("LibVLC", "rate item=${descriptor.item.id} rate=$speed")
+            onSetSpeed = { value ->
+                speed = value
+                runCatching { player.rate = value }
+                logger.log("LibVLC", "rate item=${descriptor.item.id} rate=$value")
             },
-            onAudio = {},
-            onSubtitle = {},
+            onSelectAudio = { id ->
+                runCatching { player.audioTrack = id.toInt() }
+                logger.log("LibVLC", "audioTrack item=${descriptor.item.id} id=$id")
+            },
+            onSelectSubtitle = { id ->
+                runCatching {
+                    player.spuTrack = if (id == "__off__") -1 else id.toInt()
+                }
+                logger.log("LibVLC", "subtitleTrack item=${descriptor.item.id} id=$id")
+            },
             onAspect = {
                 aspectMode = (aspectMode + 1) % 3
                 runCatching {
