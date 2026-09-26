@@ -481,7 +481,6 @@ fun DirectCodecDiagnosticScreen(
                     }
                     else -> false
                 }
-            }
             },
     ) {
         AndroidView(
