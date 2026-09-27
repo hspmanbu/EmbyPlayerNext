@@ -545,11 +545,22 @@ jobs:
           sed -i '/import java.text.SimpleDateFormat/a import java.util.Date' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
           sed -i '/import java.util.Date/a import java.util.Locale' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
 
+      - name: Apply 2.3.26 mobile and tablet polish
+        shell: bash
+        run: |
+          python3 .ci/release-2.3.26-mobile-polish.py
+          grep -q 'versionCode = 149' app/build.gradle.kts
+          grep -q 'versionName = "2.3.26"' app/build.gradle.kts
+          grep -q 'GestureHudCard(' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
+          grep -q 'gestureStartPositionMs' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
+          grep -q 'TextAlign.Center' app/src/main/java/com/embyplayernext/he/ui/components/MediaCards.kt
+          grep -q 'minLines = 2' app/src/main/java/com/embyplayernext/he/ui/components/MediaCards.kt
+
       - name: Package final Android source
         shell: bash
         run: |
-          SRC_DIR=/tmp/EmbyPlayerNext-v2.3.25-source
-          SRC_ZIP=/tmp/EmbyPlayerNext-v2.3.25-android-source.zip
+          SRC_DIR=/tmp/EmbyPlayerNext-v2.3.26-source
+          SRC_ZIP=/tmp/EmbyPlayerNext-v2.3.26-android-source.zip
           rm -rf "$SRC_DIR" "$SRC_ZIP"
           mkdir -p "$SRC_DIR"
           cp -a app "$SRC_DIR/"
@@ -559,8 +570,8 @@ jobs:
             fi
           done
           rm -rf "$SRC_DIR/app/build" "$SRC_DIR/.gradle" "$SRC_DIR/build"
-          grep -q 'versionCode = 148' "$SRC_DIR/app/build.gradle.kts"
-          grep -q 'versionName = "2.3.25"' "$SRC_DIR/app/build.gradle.kts"
+          grep -q 'versionCode = 149' "$SRC_DIR/app/build.gradle.kts"
+          grep -q 'versionName = "2.3.26"' "$SRC_DIR/app/build.gradle.kts"
           grep -q 'RKHybridSync' "$SRC_DIR/app/src/main/java/com/embyplayernext/he/playback/RockchipDirectVideoRenderer.kt"
           grep -q '更多来自' "$SRC_DIR/app/src/main/java/com/embyplayernext/he/ui/screens/DetailScreen.kt"
           ! grep -R -q 'playbackEngine\|media3RockchipMode' "$SRC_DIR/app/src/main/java"
@@ -572,8 +583,8 @@ jobs:
       - name: Upload final Android source
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.25-android-source
-          path: /tmp/EmbyPlayerNext-v2.3.25-android-source.zip
+          name: EmbyPlayerNext-v2.3.26-android-source
+          path: /tmp/EmbyPlayerNext-v2.3.26-android-source.zip
           if-no-files-found: error
           retention-days: 14
 
@@ -613,7 +624,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.25-arm64-debug
+          name: EmbyPlayerNext-v2.3.26-arm64-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: ignore
           retention-days: 14
@@ -622,7 +633,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.25-arm64-release-unsigned
+          name: EmbyPlayerNext-v2.3.26-arm64-release-unsigned
           path: app/build/outputs/apk/release/app-release-unsigned.apk
           if-no-files-found: ignore
           retention-days: 14
