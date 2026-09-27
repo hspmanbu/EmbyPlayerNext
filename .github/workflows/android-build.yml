@@ -524,18 +524,15 @@ jobs:
           grep -q 'EmbyPlayerNext/2.3.24' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
           test ! -e app/src/main/java/com/embyplayernext/he/ui/screens/SharedPlayerControls.kt
 
-      - name: Apply 2.3.24 TV controls and release audit
+      - name: Apply 2.3.24 audit follow-up
         shell: bash
         run: |
-          python3 .ci/release-2.3.24-tv-controls-audit.py
-          grep -q 'versionCode = 147' app/build.gradle.kts
-          grep -q 'versionName = "2.3.24"' app/build.gradle.kts
-          grep -q 'remoteSeekDirection' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
-          grep -q 'native.repeatCount' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
-          grep -q 'controller?.playWhenReady' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
+          python3 .ci/release-2.3.24-audit-followup.py
+          grep -q 'Version=\"2.3.24\"' app/src/main/java/com/embyplayernext/he/data/network/EmbyApiClient.kt
+          grep -q 'EmbyPlayerNext/2.3.24 Android' app/src/main/java/com/embyplayernext/he/data/network/EmbyApiClient.kt
+          grep -q 'noFirstFrameClockStart' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
           grep -q 'trackSelector hybridCompat=false media3-defaults=true' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
-          grep -q 'EmbyPlayerNext/2.3.24' app/src/main/java/com/embyplayernext/he/data/network/EmbyApiClient.kt
-          test ! -e app/src/main/java/com/embyplayernext/he/ui/screens/SharedPlayerControls.kt
+          grep -q 'detailActionScale' app/src/main/java/com/embyplayernext/he/ui/screens/DetailScreen.kt
 
       - name: Package final Android source
         shell: bash
