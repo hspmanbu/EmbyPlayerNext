@@ -434,11 +434,27 @@ jobs:
           grep -q 'snapshotFlow { surfaceReady }.first { it }' app/src/main/java/com/embyplayernext/he/ui/screens/DirectCodecDiagnosticScreen.kt
           grep -q 'reason=fps-frozen' app/src/main/java/com/embyplayernext/he/ui/screens/IjkPlayerDiagnosticScreen.kt
 
+      - name: Apply 2.3.20 Media3 sync-seek and IJK speed compatibility
+        shell: bash
+        run: |
+          cp .ci/overlay/app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt
+          cp .ci/overlay/app/src/main/java/com/embyplayernext/he/ui/screens/IjkPlayerDiagnosticScreen.kt app/src/main/java/com/embyplayernext/he/ui/screens/IjkPlayerDiagnosticScreen.kt
+          python3 .ci/release-2.3.20-sync-seek-ijk-speed.py
+          grep -q 'versionCode = 143' app/build.gradle.kts
+          grep -q 'versionName = "2.3.20"' app/build.gradle.kts
+          grep -q 'SeekParameters.PREVIOUS_SYNC' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
+          grep -q 'seekParameters=PREVIOUS_SYNC' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
+          grep -q 'drop-late earlyUs=' app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt
+          grep -q 'scheduledDeltaUs=' app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt
+          grep -q '"soundtouch", 1L' app/src/main/java/com/embyplayernext/he/ui/screens/IjkPlayerDiagnosticScreen.kt
+          grep -q '"mediacodec-sync", 1L' app/src/main/java/com/embyplayernext/he/ui/screens/IjkPlayerDiagnosticScreen.kt
+          grep -q '"framedrop", 5L' app/src/main/java/com/embyplayernext/he/ui/screens/IjkPlayerDiagnosticScreen.kt
+
       - name: Package final Android source
         shell: bash
         run: |
-          SRC_DIR=/tmp/EmbyPlayerNext-v2.3.19-source
-          SRC_ZIP=/tmp/EmbyPlayerNext-v2.3.19-android-source.zip
+          SRC_DIR=/tmp/EmbyPlayerNext-v2.3.20-source
+          SRC_ZIP=/tmp/EmbyPlayerNext-v2.3.20-android-source.zip
           rm -rf "$SRC_DIR" "$SRC_ZIP"
           mkdir -p "$SRC_DIR"
           cp -a app "$SRC_DIR/"
@@ -448,8 +464,8 @@ jobs:
             fi
           done
           rm -rf "$SRC_DIR/app/build" "$SRC_DIR/.gradle" "$SRC_DIR/build"
-          grep -q 'versionCode = 142' "$SRC_DIR/app/build.gradle.kts"
-          grep -q 'versionName = "2.3.19"' "$SRC_DIR/app/build.gradle.kts"
+          grep -q 'versionCode = 143' "$SRC_DIR/app/build.gradle.kts"
+          grep -q 'versionName = "2.3.20"' "$SRC_DIR/app/build.gradle.kts"
           grep -q 'IjkStats' "$SRC_DIR/app/src/main/java/com/embyplayernext/he/ui/screens/IjkPlayerDiagnosticScreen.kt"
           grep -q 'IjkVideoStall' "$SRC_DIR/app/src/main/java/com/embyplayernext/he/ui/screens/IjkPlayerDiagnosticScreen.kt"
           grep -q 'forceReleaseForSeek' "$SRC_DIR/app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt"
@@ -459,8 +475,8 @@ jobs:
       - name: Upload final Android source
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.19-android-source
-          path: /tmp/EmbyPlayerNext-v2.3.19-android-source.zip
+          name: EmbyPlayerNext-v2.3.20-android-source
+          path: /tmp/EmbyPlayerNext-v2.3.20-android-source.zip
           if-no-files-found: error
           retention-days: 14
 
@@ -500,7 +516,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.19-arm64-debug
+          name: EmbyPlayerNext-v2.3.20-arm64-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: ignore
           retention-days: 14
@@ -509,7 +525,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.19-arm64-release-unsigned
+          name: EmbyPlayerNext-v2.3.20-arm64-release-unsigned
           path: app/build/outputs/apk/release/app-release-unsigned.apk
           if-no-files-found: ignore
           retention-days: 14

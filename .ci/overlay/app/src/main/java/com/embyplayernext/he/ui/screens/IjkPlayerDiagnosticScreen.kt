@@ -67,7 +67,9 @@ fun IjkPlayerDiagnosticScreen(
             setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec-hevc", 1L)
             setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec-auto-rotate", 1L)
             setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec-handle-resolution-change", 1L)
-            setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "framedrop", 1L)
+            setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "soundtouch", 1L)
+            setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec-sync", 1L)
+            setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "framedrop", 5L)
             setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "start-on-prepared", 1L)
         }
     }
@@ -183,7 +185,10 @@ fun IjkPlayerDiagnosticScreen(
             if (descriptor.initialPositionMs > 0) runCatching { player.seekTo(descriptor.initialPositionMs) }
             runCatching { player.start() }
             playing = true
-            logger.log("IjkPlayer", "prepared item=" + descriptor.item.id)
+            logger.log(
+                "IjkPlayer",
+                "prepared item=" + descriptor.item.id + " speedCompat=soundtouch+mediacodec-sync framedrop=5",
+            )
             logDecoder("prepared")
         }
         player.setOnBufferingUpdateListener { _, percent ->

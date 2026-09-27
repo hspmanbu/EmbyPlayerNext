@@ -300,17 +300,22 @@ private class RockchipExperimentVideoRenderer(
 
 
     override fun shouldDropOutputBuffer(earlyUs: Long, elapsedRealtimeUs: Long, isLastBuffer: Boolean): Boolean {
-        if (experimentMode() == "directcodec_renderer") return false
-        return super.shouldDropOutputBuffer(earlyUs, elapsedRealtimeUs, isLastBuffer)
+        val drop = super.shouldDropOutputBuffer(earlyUs, elapsedRealtimeUs, isLastBuffer)
+        if (experimentMode() == "directcodec_renderer" && drop) {
+            logger.log("RKClockGate", "drop-late earlyUs=$earlyUs")
+        }
+        return drop
     }
 
     override fun shouldDropBuffersToKeyframe(earlyUs: Long, elapsedRealtimeUs: Long, isLastBuffer: Boolean): Boolean {
-        if (experimentMode() == "directcodec_renderer") return false
-        return super.shouldDropBuffersToKeyframe(earlyUs, elapsedRealtimeUs, isLastBuffer)
+        val drop = super.shouldDropBuffersToKeyframe(earlyUs, elapsedRealtimeUs, isLastBuffer)
+        if (experimentMode() == "directcodec_renderer" && drop) {
+            logger.log("RKClockGate", "drop-to-keyframe earlyUs=$earlyUs")
+        }
+        return drop
     }
 
     override fun shouldSkipBuffersWithIdenticalReleaseTime(): Boolean {
-        if (experimentMode() == "directcodec_renderer") return false
         return super.shouldSkipBuffersWithIdenticalReleaseTime()
     }
 
@@ -321,7 +326,8 @@ private class RockchipExperimentVideoRenderer(
         releaseTimeNs: Long,
     ) {
         if (experimentMode() == "directcodec_renderer") {
-            logger.log("RKDirectRenderer", "ptsUs=" + presentationTimeUs + " release=immediate")
+            val deltaUs = (releaseTimeNs - System.nanoTime()) / 1_000L
+            logger.log("RKDirectRenderer", "ptsUs=$presentationTimeUs release=immediate scheduledDeltaUs=$deltaUs")
             @Suppress("DEPRECATION")
             super.renderOutputBuffer(codec, index, presentationTimeUs)
         } else {
