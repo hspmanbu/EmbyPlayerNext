@@ -539,6 +539,7 @@ jobs:
         run: |
           base64 --decode .ci/release-2.3.25-polish.py.gz.b64 > /tmp/release-2.3.25.py.gz
           gzip -dc /tmp/release-2.3.25.py.gz > /tmp/release-2.3.25.py
+          sed -i 's#/mnt/data/v225_base/##g' /tmp/release-2.3.25.py
           python3 /tmp/release-2.3.25.py
           grep -q 'versionCode = 148' app/build.gradle.kts
           grep -q 'versionName = "2.3.25"' app/build.gradle.kts
