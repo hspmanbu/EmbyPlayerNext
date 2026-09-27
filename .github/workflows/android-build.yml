@@ -541,6 +541,8 @@ jobs:
           gzip -dc /tmp/release-2.3.25.py.gz > /tmp/release-2.3.25.py
           sed -i 's#/mnt/data/v225_base/##g' /tmp/release-2.3.25.py
           python3 /tmp/release-2.3.25.py
+          python3 -c 'from pathlib import Path; p=Path("app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt"); s=p.read_text(); p.write_text(s if "import java.text.SimpleDateFormat" in s else s.replace("import kotlinx.coroutines.launch\\n", "import kotlinx.coroutines.launch\\nimport java.text.SimpleDateFormat\\nimport java.util.Date\\nimport java.util.Locale\\n"))'
+          grep -q 'import java.text.SimpleDateFormat' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
           grep -q 'versionCode = 148' app/build.gradle.kts
           grep -q 'versionName = "2.3.25"' app/build.gradle.kts
           grep -q 'val effectiveDensity = scaledDensity' app/src/main/java/com/embyplayernext/he/ui/EmbyApp.kt
