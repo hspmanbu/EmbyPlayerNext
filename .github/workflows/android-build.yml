@@ -528,7 +528,7 @@ jobs:
         shell: bash
         run: |
           python3 .ci/release-2.3.24-audit-followup.py
-          grep -q 'Version=\"2.3.24\"' app/src/main/java/com/embyplayernext/he/data/network/EmbyApiClient.kt
+          grep -Fq 'Version=\"2.3.24\"' app/src/main/java/com/embyplayernext/he/data/network/EmbyApiClient.kt
           grep -q 'EmbyPlayerNext/2.3.24 Android' app/src/main/java/com/embyplayernext/he/data/network/EmbyApiClient.kt
           grep -q 'noFirstFrameClockStart' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
           grep -q 'trackSelector hybridCompat=false media3-defaults=true' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
