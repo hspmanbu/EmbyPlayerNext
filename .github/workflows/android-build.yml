@@ -416,15 +416,29 @@ jobs:
           grep -q 'versionCode = 141' app/build.gradle.kts
           grep -q 'versionName = "2.3.18"' app/build.gradle.kts
           grep -q 'pendingSeekGeneration' app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt
-          grep -q 'discard-old generation=' app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt
           grep -q 'first-output generation=' app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt
-          grep -q 'suppressed-stale' app/src/main/java/com/embyplayernext/he/ui/screens/DirectCodecDiagnosticScreen.kt
+          grep -q 'decoderRunSerial' app/src/main/java/com/embyplayernext/he/ui/screens/DirectCodecDiagnosticScreen.kt
+
+      - name: Apply 2.3.19 Rockchip codec recreate and DirectCodec single-flight
+        shell: bash
+        run: |
+          cp .ci/overlay/app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt
+          cp .ci/overlay/app/src/main/java/com/embyplayernext/he/ui/screens/DirectCodecDiagnosticScreen.kt app/src/main/java/com/embyplayernext/he/ui/screens/DirectCodecDiagnosticScreen.kt
+          cp .ci/overlay/app/src/main/java/com/embyplayernext/he/ui/screens/IjkPlayerDiagnosticScreen.kt app/src/main/java/com/embyplayernext/he/ui/screens/IjkPlayerDiagnosticScreen.kt
+          python3 .ci/release-2.3.19-rk-recreate-singleflight.py
+          grep -q 'versionCode = 142' app/build.gradle.kts
+          grep -q 'versionName = "2.3.19"' app/build.gradle.kts
+          grep -q 'forceReleaseForSeek' app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt
+          grep -q 'release-codec generation=' app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt
+          grep -q 'recreate-complete generation=' app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt
+          grep -q 'snapshotFlow { surfaceReady }.first { it }' app/src/main/java/com/embyplayernext/he/ui/screens/DirectCodecDiagnosticScreen.kt
+          grep -q 'reason=fps-frozen' app/src/main/java/com/embyplayernext/he/ui/screens/IjkPlayerDiagnosticScreen.kt
 
       - name: Package final Android source
         shell: bash
         run: |
-          SRC_DIR=/tmp/EmbyPlayerNext-v2.3.18-source
-          SRC_ZIP=/tmp/EmbyPlayerNext-v2.3.18-android-source.zip
+          SRC_DIR=/tmp/EmbyPlayerNext-v2.3.19-source
+          SRC_ZIP=/tmp/EmbyPlayerNext-v2.3.19-android-source.zip
           rm -rf "$SRC_DIR" "$SRC_ZIP"
           mkdir -p "$SRC_DIR"
           cp -a app "$SRC_DIR/"
@@ -434,19 +448,19 @@ jobs:
             fi
           done
           rm -rf "$SRC_DIR/app/build" "$SRC_DIR/.gradle" "$SRC_DIR/build"
-          grep -q 'versionCode = 141' "$SRC_DIR/app/build.gradle.kts"
-          grep -q 'versionName = "2.3.18"' "$SRC_DIR/app/build.gradle.kts"
+          grep -q 'versionCode = 142' "$SRC_DIR/app/build.gradle.kts"
+          grep -q 'versionName = "2.3.19"' "$SRC_DIR/app/build.gradle.kts"
           grep -q 'IjkStats' "$SRC_DIR/app/src/main/java/com/embyplayernext/he/ui/screens/IjkPlayerDiagnosticScreen.kt"
           grep -q 'IjkVideoStall' "$SRC_DIR/app/src/main/java/com/embyplayernext/he/ui/screens/IjkPlayerDiagnosticScreen.kt"
-          grep -q 'pendingSeekGeneration' "$SRC_DIR/app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt"
+          grep -q 'forceReleaseForSeek' "$SRC_DIR/app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt"
           (cd /tmp && zip -qr "$SRC_ZIP" "$(basename "$SRC_DIR")")
           sha256sum "$SRC_ZIP"
 
       - name: Upload final Android source
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.18-android-source
-          path: /tmp/EmbyPlayerNext-v2.3.18-android-source.zip
+          name: EmbyPlayerNext-v2.3.19-android-source
+          path: /tmp/EmbyPlayerNext-v2.3.19-android-source.zip
           if-no-files-found: error
           retention-days: 14
 
@@ -486,7 +500,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.18-arm64-debug
+          name: EmbyPlayerNext-v2.3.19-arm64-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: ignore
           retention-days: 14
@@ -495,7 +509,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.18-arm64-release-unsigned
+          name: EmbyPlayerNext-v2.3.19-arm64-release-unsigned
           path: app/build/outputs/apk/release/app-release-unsigned.apk
           if-no-files-found: ignore
           retention-days: 14
