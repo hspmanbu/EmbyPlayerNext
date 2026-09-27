@@ -51,6 +51,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -98,7 +99,7 @@ fun DirectCodecDiagnosticScreen(
     val frameAtomic = remember(descriptor.playSessionId) { AtomicLong(0L) }
     val speedMilliAtomic = remember(descriptor.playSessionId) { AtomicLong(1000L) }
     val speedSerialAtomic = remember(descriptor.playSessionId) { AtomicLong(0L) }
-    val runGenerationAtomic = remember(descriptor.playSessionId) { AtomicLong(0L) }
+    val decoderRunSerial = remember(descriptor.playSessionId) { AtomicLong(0L) }
     val focusRequester = remember { FocusRequester() }
     val playFocusRequester = remember { FocusRequester() }
 
@@ -142,7 +143,6 @@ fun DirectCodecDiagnosticScreen(
             }
 
             override fun surfaceDestroyed(holder: SurfaceHolder) {
-                runGenerationAtomic.incrementAndGet()
                 stopAtomic.set(true)
                 surfaceReady = false
                 logger.log("DirectCodec", "surfaceDestroyed item=${descriptor.item.id}")
@@ -168,9 +168,9 @@ fun DirectCodecDiagnosticScreen(
         }
     }
 
-    LaunchedEffect(surfaceReady, descriptor.playSessionId) {
-        if (!surfaceReady) return@LaunchedEffect
-        val runGeneration = runGenerationAtomic.incrementAndGet()
+    LaunchedEffect(descriptor.playSessionId) {
+        snapshotFlow { surfaceReady }.first { it }
+        val runSerial = decoderRunSerial.incrementAndGet()
         stopAtomic.set(false)
         failed = null
         ended = false
@@ -243,10 +243,8 @@ fun DirectCodecDiagnosticScreen(
                     codec = mc
                     mc.configure(minimal, outputSurface, null, 0)
                     mc.start()
-                    logger.log("DirectCodec", "codecStarted item=${descriptor.item.id} codec=${mc.name} mime=$mime size=${width}x$height generation=$runGeneration")
-                    withContext(Dispatchers.Main) {
-                        if (runGeneration == runGenerationAtomic.get()) failed = null
-                    }
+                    logger.log("DirectCodec", "codecStarted item=${descriptor.item.id} codec=${mc.name} mime=$mime size=${width}x$height run=$runSerial")
+                    withContext(Dispatchers.Main) { failed = null }
 
                     val initialUs = descriptor.initialPositionMs.coerceAtLeast(0L) * 1000L
                     if (initialUs > 0L) {
@@ -264,7 +262,7 @@ fun DirectCodecDiagnosticScreen(
                     while (
                         currentCoroutineContext().isActive &&
                         !stopAtomic.get() &&
-                        runGeneration == runGenerationAtomic.get() &&
+                        surfaceReady &&
                         !outputDone
                     ) {
                         if (pausedAtomic.get()) {
@@ -380,17 +378,16 @@ fun DirectCodecDiagnosticScreen(
             )
             throw cancel
         } catch (t: Throwable) {
-            val currentGeneration = runGenerationAtomic.get()
-            if (runGeneration == currentGeneration && !stopAtomic.get()) {
+            if (!stopAtomic.get()) {
                 failed = "${t.javaClass.simpleName}: ${t.message ?: "unknown"}"
                 logger.log(
                     "DirectCodecError",
-                    "item=${descriptor.item.id} generation=$runGeneration type=${t.javaClass.name} message=${t.message} cause=${t.cause?.javaClass?.name}:${t.cause?.message}",
+                    "item=${descriptor.item.id} run=$runSerial type=${t.javaClass.name} message=${t.message} cause=${t.cause?.javaClass?.name}:${t.cause?.message}",
                 )
             } else {
                 logger.log(
                     "DirectCodecError",
-                    "suppressed-stale item=${descriptor.item.id} generation=$runGeneration current=$currentGeneration type=${t.javaClass.name} message=${t.message}",
+                    "suppressed-after-stop item=${descriptor.item.id} run=$runSerial type=${t.javaClass.name} message=${t.message}",
                 )
             }
         }
