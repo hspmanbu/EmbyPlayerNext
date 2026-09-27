@@ -489,6 +489,100 @@ jobs:
           base64 --decode .ci/release-2.3.23-release-candidate.py.gz.b64 > /tmp/release-2.3.23.py.gz
           gzip -dc /tmp/release-2.3.23.py.gz > /tmp/release-2.3.23.py
           python3 /tmp/release-2.3.23.py
+          grep -q '^import androidx.media3.common.MimeTypes          grep -q 'versionName = "2.3.23"' app/build.gradle.kts
+          grep -q 'hasVendorOmxHevc' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
+          grep -q 'RKHybridSync' app/src/main/java/com/embyplayernext/he/playback/RockchipDirectVideoRenderer.kt
+          grep -q '更多来自' app/src/main/java/com/embyplayernext/he/ui/screens/DetailScreen.kt
+          grep -q 'DetailBackdrop' app/src/main/java/com/embyplayernext/he/ui/screens/DetailScreen.kt
+          grep -q 'FocusActionButton' app/src/main/java/com/embyplayernext/he/ui/screens/DetailScreen.kt
+          ! grep -R -q 'playbackEngine\|media3RockchipMode' app/src/main/java
+          ! grep -q 'superjianpang' app/build.gradle.kts
+          test ! -e app/src/main/java/com/embyplayernext/he/ui/screens/DirectCodecDiagnosticScreen.kt
+          test ! -e app/src/main/java/com/embyplayernext/he/ui/screens/IjkPlayerDiagnosticScreen.kt
+          test ! -e app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt
+
+      - name: Package final Android source
+        shell: bash
+        run: |
+          SRC_DIR=/tmp/EmbyPlayerNext-v2.3.23-source
+          SRC_ZIP=/tmp/EmbyPlayerNext-v2.3.23-android-source.zip
+          rm -rf "$SRC_DIR" "$SRC_ZIP"
+          mkdir -p "$SRC_DIR"
+          cp -a app "$SRC_DIR/"
+          for path in build.gradle.kts settings.gradle.kts gradle.properties gradlew gradlew.bat gradle README.md; do
+            if [ -e "$path" ]; then
+              cp -a "$path" "$SRC_DIR/"
+            fi
+          done
+          rm -rf "$SRC_DIR/app/build" "$SRC_DIR/.gradle" "$SRC_DIR/build"
+          grep -q 'versionCode = 146' "$SRC_DIR/app/build.gradle.kts"
+          grep -q 'versionName = "2.3.23"' "$SRC_DIR/app/build.gradle.kts"
+          grep -q 'RKHybridSync' "$SRC_DIR/app/src/main/java/com/embyplayernext/he/playback/RockchipDirectVideoRenderer.kt"
+          grep -q '更多来自' "$SRC_DIR/app/src/main/java/com/embyplayernext/he/ui/screens/DetailScreen.kt"
+          ! grep -R -q 'playbackEngine\|media3RockchipMode' "$SRC_DIR/app/src/main/java"
+          test ! -e "$SRC_DIR/app/src/main/java/com/embyplayernext/he/ui/screens/DirectCodecDiagnosticScreen.kt"
+          test ! -e "$SRC_DIR/app/src/main/java/com/embyplayernext/he/ui/screens/IjkPlayerDiagnosticScreen.kt"
+          (cd /tmp && zip -qr "$SRC_ZIP" "$(basename "$SRC_DIR")")
+          sha256sum "$SRC_ZIP"
+
+      - name: Upload final Android source
+        uses: actions/upload-artifact@v4
+        with:
+          name: EmbyPlayerNext-v2.3.23-android-source
+          path: /tmp/EmbyPlayerNext-v2.3.23-android-source.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          "$SDKMANAGER" --version
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Verify and build candidate
+        run: gradle --no-daemon --stacktrace :app:lintDebug :app:assembleDebug :app:assembleRelease
+
+      - name: Verify package and stable CI signature
+        shell: bash
+        run: |
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
+          grep -q "package: name='com.embyplayernext.he'" /tmp/badging.txt
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$APK" | tee /tmp/signature.txt
+          tr '[:upper:]' '[:lower:]' < /tmp/signature.txt | tr -d ':' | grep -q '9f72c5f3666451dd793a41079a3d8cf21f5ae82f9800d574583ec8db93228e8a'
+
+      - name: Upload debug APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: EmbyPlayerNext-v2.3.23-arm64-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload unsigned release APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: EmbyPlayerNext-v2.3.23-arm64-release-unsigned
+          path: app/build/outputs/apk/release/app-release-unsigned.apk
+          if-no-files-found: ignore
+          retention-days: 14
+ app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt || sed -i '/import androidx.media3.common.C/a import androidx.media3.common.MimeTypes' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
           grep -q 'versionCode = 146' app/build.gradle.kts
           grep -q 'versionName = "2.3.23"' app/build.gradle.kts
           grep -q 'hasVendorOmxHevc' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
