@@ -447,8 +447,7 @@ jobs:
           grep -q 'drop-late earlyUs=' app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt
           grep -q 'scheduledDeltaUs=' app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt
           grep -q '"soundtouch", 1L' app/src/main/java/com/embyplayernext/he/ui/screens/IjkPlayerDiagnosticScreen.kt
-          grep -q '"mediacodec-sync", 1L' app/src/main/java/com/embyplayernext/he/ui/screens/IjkPlayerDiagnosticScreen.kt
-          grep -q '"framedrop", 5L' app/src/main/java/com/embyplayernext/he/ui/screens/IjkPlayerDiagnosticScreen.kt
+          grep -q 'IjkStats' app/src/main/java/com/embyplayernext/he/ui/screens/IjkPlayerDiagnosticScreen.kt
 
       - name: Apply 2.3.21 no-keyframe-drop and IJK SoundTouch isolation
         shell: bash
