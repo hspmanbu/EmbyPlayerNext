@@ -465,11 +465,27 @@ jobs:
           grep -q '"framedrop", 1L' app/src/main/java/com/embyplayernext/he/ui/screens/IjkPlayerDiagnosticScreen.kt
           grep -q 'speedCompat=soundtouch-only' app/src/main/java/com/embyplayernext/he/ui/screens/IjkPlayerDiagnosticScreen.kt
 
+      - name: Apply 2.3.22 Hybrid Direct OMX video renderer
+        shell: bash
+        run: |
+          cp .ci/overlay/app/src/main/java/com/embyplayernext/he/playback/RockchipHybridRenderersFactory.kt app/src/main/java/com/embyplayernext/he/playback/RockchipHybridRenderersFactory.kt
+          cp .ci/overlay/app/src/main/java/com/embyplayernext/he/playback/RockchipDirectVideoRenderer.kt app/src/main/java/com/embyplayernext/he/playback/RockchipDirectVideoRenderer.kt
+          python3 .ci/release-2.3.22-hybrid-direct-video.py
+          grep -q 'versionCode = 145' app/build.gradle.kts
+          grep -q 'versionName = "2.3.22"' app/build.gradle.kts
+          grep -q 'RockchipHybridRenderersFactory' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
+          grep -q 'config.hardwareCompatibilityMode && isRockchip && mimeType.equals("video/hevc", true)' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
+          grep -q 'class RockchipDirectVideoRenderer' app/src/main/java/com/embyplayernext/he/playback/RockchipDirectVideoRenderer.kt
+          grep -q 'releaseOutputBuffer(index, releaseNs)' app/src/main/java/com/embyplayernext/he/playback/RockchipDirectVideoRenderer.kt
+          grep -q 'Never use releaseOutputBuffer(false) for ordinary Rockchip frames' app/src/main/java/com/embyplayernext/he/playback/RockchipDirectVideoRenderer.kt
+          grep -q 'route=true omx=' app/src/main/java/com/embyplayernext/he/playback/RockchipHybridRenderersFactory.kt
+          grep -q 'default-media3' app/src/main/java/com/embyplayernext/he/playback/RockchipHybridRenderersFactory.kt
+
       - name: Package final Android source
         shell: bash
         run: |
-          SRC_DIR=/tmp/EmbyPlayerNext-v2.3.21-source
-          SRC_ZIP=/tmp/EmbyPlayerNext-v2.3.21-android-source.zip
+          SRC_DIR=/tmp/EmbyPlayerNext-v2.3.22-source
+          SRC_ZIP=/tmp/EmbyPlayerNext-v2.3.22-android-source.zip
           rm -rf "$SRC_DIR" "$SRC_ZIP"
           mkdir -p "$SRC_DIR"
           cp -a app "$SRC_DIR/"
@@ -479,8 +495,8 @@ jobs:
             fi
           done
           rm -rf "$SRC_DIR/app/build" "$SRC_DIR/.gradle" "$SRC_DIR/build"
-          grep -q 'versionCode = 144' "$SRC_DIR/app/build.gradle.kts"
-          grep -q 'versionName = "2.3.21"' "$SRC_DIR/app/build.gradle.kts"
+          grep -q 'versionCode = 145' "$SRC_DIR/app/build.gradle.kts"
+          grep -q 'versionName = "2.3.22"' "$SRC_DIR/app/build.gradle.kts"
           grep -q 'IjkStats' "$SRC_DIR/app/src/main/java/com/embyplayernext/he/ui/screens/IjkPlayerDiagnosticScreen.kt"
           grep -q 'IjkVideoStall' "$SRC_DIR/app/src/main/java/com/embyplayernext/he/ui/screens/IjkPlayerDiagnosticScreen.kt"
           grep -q 'forceReleaseForSeek' "$SRC_DIR/app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt"
@@ -490,8 +506,8 @@ jobs:
       - name: Upload final Android source
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.21-android-source
-          path: /tmp/EmbyPlayerNext-v2.3.21-android-source.zip
+          name: EmbyPlayerNext-v2.3.22-android-source
+          path: /tmp/EmbyPlayerNext-v2.3.22-android-source.zip
           if-no-files-found: error
           retention-days: 14
 
@@ -531,7 +547,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.21-arm64-debug
+          name: EmbyPlayerNext-v2.3.22-arm64-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: ignore
           retention-days: 14
@@ -540,7 +556,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.21-arm64-release-unsigned
+          name: EmbyPlayerNext-v2.3.22-arm64-release-unsigned
           path: app/build/outputs/apk/release/app-release-unsigned.apk
           if-no-files-found: ignore
           retention-days: 14
