@@ -99,6 +99,7 @@ private class RockchipExperimentVideoRenderer(
     private var seekFirstInputUs = Long.MIN_VALUE
     private var seekStartRealtimeMs = 0L
     private var seekStallLogged = false
+    private var forceReleaseForSeek = false
 
     private fun experimentMode(): String {
         if (!prefs.getBoolean("hardware_compatibility_mode", false)) return "default"
@@ -119,18 +120,39 @@ private class RockchipExperimentVideoRenderer(
             seekFirstInputUs = Long.MIN_VALUE
             seekStartRealtimeMs = SystemClock.elapsedRealtime()
             seekStallLogged = false
+            forceReleaseForSeek = true
             logger.log(
                 "RKSeek",
-                "begin generation=$seekGeneration targetUs=$positionUs codec=${getCodecInfo()?.name} thread=${Thread.currentThread().name}",
+                "begin generation=$seekGeneration targetUs=$positionUs strategy=release-recreate codec=${getCodecInfo()?.name} thread=${Thread.currentThread().name}",
             )
         }
-        super.onPositionReset(positionUs, joining)
+        try {
+            super.onPositionReset(positionUs, joining)
+        } finally {
+            forceReleaseForSeek = false
+        }
         if (directMode && hadCodec) {
             logger.log(
                 "RKSeek",
-                "flush-complete generation=$seekGeneration targetUs=$positionUs codec=${getCodecInfo()?.name}",
+                "recreate-complete generation=$seekGeneration targetUs=$positionUs codec=${getCodecInfo()?.name} codecPresent=${getCodec() != null}",
             )
         }
+    }
+
+    override fun flushOrReleaseCodec(): Boolean {
+        if (
+            experimentMode() == "directcodec_renderer" &&
+            forceReleaseForSeek &&
+            getCodec() != null
+        ) {
+            logger.log(
+                "RKSeek",
+                "release-codec generation=$pendingSeekGeneration targetUs=$seekTargetUs codec=${getCodecInfo()?.name}",
+            )
+            releaseCodec()
+            return true
+        }
+        return super.flushOrReleaseCodec()
     }
 
     override fun resetCodecStateForFlush() {
@@ -138,7 +160,7 @@ private class RockchipExperimentVideoRenderer(
         if (experimentMode() == "directcodec_renderer" && pendingSeekGeneration >= 0L) {
             logger.log(
                 "RKSeek",
-                "codec-state-reset generation=$pendingSeekGeneration targetUs=$seekTargetUs",
+                "codec-state-reset generation=$pendingSeekGeneration targetUs=$seekTargetUs strategy=release-recreate",
             )
         }
     }
@@ -190,22 +212,17 @@ private class RockchipExperimentVideoRenderer(
         val activeCodec = codec ?: return false
         val generation = pendingSeekGeneration
         val presentationTimeUs = bufferPresentationTimeUs - getOutputStreamOffsetUs()
-        val clearlyBeforeTarget =
-            seekTargetUs != Long.MIN_VALUE && bufferPresentationTimeUs + 250_000L < seekTargetUs
-
-        if (!isLastBuffer && (isDecodeOnlyBuffer || clearlyBeforeTarget)) {
+        if (!isLastBuffer && isDecodeOnlyBuffer) {
             logger.log(
                 "RKSeek",
-                "discard-old generation=$generation targetUs=$seekTargetUs ptsUs=$bufferPresentationTimeUs decodeOnly=$isDecodeOnlyBuffer",
+                "discard-decode-only generation=$generation targetUs=$seekTargetUs ptsUs=$bufferPresentationTimeUs",
             )
             skipOutputBuffer(activeCodec, bufferIndex, presentationTimeUs)
             return true
         }
 
-        // During the seek boundary bypass Media3's frame-release controller for exactly the first
-        // valid frame. This mirrors the DirectCodec/ijk strategy: flush old decoder state, reject
-        // pre-seek output, then make the new generation visible immediately. Normal Media3 timing
-        // resumes from the following frame.
+        // The codec instance is fresh after a Rockchip seek. Let decode-only preroll be discarded,
+        // then render the first valid frame immediately so Media3 can leave BUFFERING promptly.
         @Suppress("DEPRECATION")
         super.renderOutputBuffer(activeCodec, bufferIndex, presentationTimeUs)
         pendingSeekGeneration = -1L
