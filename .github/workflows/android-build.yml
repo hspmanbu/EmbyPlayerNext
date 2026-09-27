@@ -420,6 +420,36 @@ jobs:
           grep -q 'first-output generation=' app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt
           grep -q 'suppressed-stale' app/src/main/java/com/embyplayernext/he/ui/screens/DirectCodecDiagnosticScreen.kt
 
+      - name: Package final Android source
+        shell: bash
+        run: |
+          SRC_DIR=/tmp/EmbyPlayerNext-v2.3.18-source
+          SRC_ZIP=/tmp/EmbyPlayerNext-v2.3.18-android-source.zip
+          rm -rf "$SRC_DIR" "$SRC_ZIP"
+          mkdir -p "$SRC_DIR"
+          cp -a app "$SRC_DIR/"
+          for path in build.gradle.kts settings.gradle.kts gradle.properties gradlew gradlew.bat gradle README.md; do
+            if [ -e "$path" ]; then
+              cp -a "$path" "$SRC_DIR/"
+            fi
+          done
+          rm -rf "$SRC_DIR/app/build" "$SRC_DIR/.gradle" "$SRC_DIR/build"
+          grep -q 'versionCode = 141' "$SRC_DIR/app/build.gradle.kts"
+          grep -q 'versionName = "2.3.18"' "$SRC_DIR/app/build.gradle.kts"
+          grep -q 'IjkStats' "$SRC_DIR/app/src/main/java/com/embyplayernext/he/ui/screens/IjkPlayerDiagnosticScreen.kt"
+          grep -q 'IjkVideoStall' "$SRC_DIR/app/src/main/java/com/embyplayernext/he/ui/screens/IjkPlayerDiagnosticScreen.kt"
+          grep -q 'pendingSeekGeneration' "$SRC_DIR/app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt"
+          (cd /tmp && zip -qr "$SRC_ZIP" "$(basename "$SRC_DIR")")
+          sha256sum "$SRC_ZIP"
+
+      - name: Upload final Android source
+        uses: actions/upload-artifact@v4
+        with:
+          name: EmbyPlayerNext-v2.3.18-android-source
+          path: /tmp/EmbyPlayerNext-v2.3.18-android-source.zip
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
