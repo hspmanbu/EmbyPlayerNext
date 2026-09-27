@@ -514,6 +514,7 @@ jobs:
           echo "0de0b63b7066eab6aef8fbe01ad209da23b11f4c7aff8bce2919583de574e027  /tmp/release-2.3.24.patch" | sha256sum -c -
           git apply --check /tmp/release-2.3.24.patch
           git apply /tmp/release-2.3.24.patch
+          sed -i '/import androidx.compose.ui.input.key.nativeKeyEvent/d' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
           grep -q 'versionCode = 147' app/build.gradle.kts
           grep -q 'versionName = "2.3.24"' app/build.gradle.kts
           grep -q 'KEYCODE_DPAD_CENTER' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
