@@ -68,8 +68,8 @@ fun IjkPlayerDiagnosticScreen(
             setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec-auto-rotate", 1L)
             setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec-handle-resolution-change", 1L)
             setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "soundtouch", 1L)
-            setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec-sync", 1L)
-            setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "framedrop", 5L)
+            setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec-sync", 0L)
+            setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "framedrop", 1L)
             setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "start-on-prepared", 1L)
         }
     }
@@ -187,7 +187,7 @@ fun IjkPlayerDiagnosticScreen(
             playing = true
             logger.log(
                 "IjkPlayer",
-                "prepared item=" + descriptor.item.id + " speedCompat=soundtouch+mediacodec-sync framedrop=5",
+                "prepared item=" + descriptor.item.id + " speedCompat=soundtouch-only mediacodecSync=0 framedrop=1",
             )
             logDecoder("prepared")
         }

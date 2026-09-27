@@ -308,11 +308,10 @@ private class RockchipExperimentVideoRenderer(
     }
 
     override fun shouldDropBuffersToKeyframe(earlyUs: Long, elapsedRealtimeUs: Long, isLastBuffer: Boolean): Boolean {
-        val drop = super.shouldDropBuffersToKeyframe(earlyUs, elapsedRealtimeUs, isLastBuffer)
-        if (experimentMode() == "directcodec_renderer" && drop) {
-            logger.log("RKClockGate", "drop-to-keyframe earlyUs=$earlyUs")
+        if (experimentMode() == "directcodec_renderer") {
+            return false
         }
-        return drop
+        return super.shouldDropBuffersToKeyframe(earlyUs, elapsedRealtimeUs, isLastBuffer)
     }
 
     override fun shouldSkipBuffersWithIdenticalReleaseTime(): Boolean {
