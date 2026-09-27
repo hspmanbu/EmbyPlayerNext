@@ -36,6 +36,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.embyplayernext.he.data.model.EmbyServerConfig
 import com.embyplayernext.he.data.model.PlaybackDescriptor
 import com.embyplayernext.he.util.DiagnosticsLogger
+import kotlin.math.abs
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -280,6 +281,10 @@ fun IjkPlayerDiagnosticScreen(
     LaunchedEffect(started, playing) {
         var seconds = 0
         var lowOutputSeconds = 0
+        var frozenStatsSeconds = 0
+        var lastDecodeFps = Float.NaN
+        var lastOutputFps = Float.NaN
+        var lastStatsPositionMs = positionMs
         while (isActive && started && !ended) {
             delay(1000)
             seconds++
@@ -297,10 +302,38 @@ fun IjkPlayerDiagnosticScreen(
             val seekLoadMs = runCatching { player.seekLoadDuration }.getOrDefault(-1L)
             val decoder = runCatching { player.videoDecoder }.getOrDefault(-1)
 
+            val positionAdvanceMs = positionMs - lastStatsPositionMs
+            val statsUnchanged =
+                !lastDecodeFps.isNaN() &&
+                !lastOutputFps.isNaN() &&
+                abs(decodeFps - lastDecodeFps) < 0.0001f &&
+                abs(outputFps - lastOutputFps) < 0.0001f
+
+            if (
+                playing &&
+                !buffering &&
+                speed != 1f &&
+                positionAdvanceMs >= 500L &&
+                decodeFps > 0f &&
+                outputFps > 0f &&
+                statsUnchanged
+            ) {
+                frozenStatsSeconds++
+            } else {
+                frozenStatsSeconds = 0
+            }
+
             logger.log(
                 "IjkStats",
-                "item=${descriptor.item.id} posMs=$positionMs playing=$playing buffering=$buffering percent=$bufferingPercent speed=$speed decoder=${decoderLabel(decoder)} decodeFps=$decodeFps outputFps=$outputFps dropRate=$dropRate videoCacheMs=$videoCacheMs audioCacheMs=$audioCacheMs videoCacheBytes=$videoCacheBytes audioCacheBytes=$audioCacheBytes videoPackets=$videoPackets audioPackets=$audioPackets tcpBps=$tcpSpeed seekLoadMs=$seekLoadMs actionGen=$actionGeneration action=$lastAction actionAgeMs=${SystemClock.elapsedRealtime() - lastActionStartMs}",
+                "item=${descriptor.item.id} posMs=$positionMs playing=$playing buffering=$buffering percent=$bufferingPercent speed=$speed decoder=${decoderLabel(decoder)} decodeFps=$decodeFps outputFps=$outputFps dropRate=$dropRate videoCacheMs=$videoCacheMs audioCacheMs=$audioCacheMs videoCacheBytes=$videoCacheBytes audioCacheBytes=$audioCacheBytes videoPackets=$videoPackets audioPackets=$audioPackets tcpBps=$tcpSpeed seekLoadMs=$seekLoadMs statsFrozenSeconds=$frozenStatsSeconds actionGen=$actionGeneration action=$lastAction actionAgeMs=${SystemClock.elapsedRealtime() - lastActionStartMs}",
             )
+
+            if (frozenStatsSeconds == 3) {
+                logger.log(
+                    "IjkVideoStall",
+                    "item=${descriptor.item.id} reason=fps-frozen posMs=$positionMs positionAdvanceMs=$positionAdvanceMs speed=$speed decoder=${decoderLabel(decoder)} decodeFps=$decodeFps outputFps=$outputFps buffering=$buffering videoCacheMs=$videoCacheMs actionGen=$actionGeneration action=$lastAction actionAgeMs=${SystemClock.elapsedRealtime() - lastActionStartMs}",
+                )
+            }
 
             if (playing && !buffering && outputFps in 0f..0.5f) {
                 lowOutputSeconds++
@@ -313,6 +346,10 @@ fun IjkPlayerDiagnosticScreen(
                     "item=${descriptor.item.id} posMs=$positionMs speed=$speed decoder=${decoderLabel(decoder)} decodeFps=$decodeFps outputFps=$outputFps buffering=$buffering videoCacheMs=$videoCacheMs actionGen=$actionGeneration action=$lastAction actionAgeMs=${SystemClock.elapsedRealtime() - lastActionStartMs}",
                 )
             }
+
+            lastDecodeFps = decodeFps
+            lastOutputFps = outputFps
+            lastStatsPositionMs = positionMs
 
             if (seconds % 10 == 0) {
                 onProgress(descriptor, positionMs, durationMs.takeIf { it > 0 }, !playing, "TimeUpdate")
