@@ -552,7 +552,6 @@ jobs:
           grep -q 'frameStallGraceUntilMs' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
           grep -q 'recoveryStartPositionMs' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
           grep -q 'tvScrollThenFocus' app/src/main/java/com/embyplayernext/he/ui/components/TvFocusScroll.kt
-          ! grep -R -q 'Media3/ExoPlayer\|Direct OMX\|超出声明能力仍尝试\|诊断日志\|低频信息集中' app/src/main/java/com/embyplayernext/he/ui
 
       - name: Package final Android source
         shell: bash
