@@ -507,7 +507,9 @@ jobs:
       - name: Apply 2.3.24 release polish and TV remote fixes
         shell: bash
         run: |
-          base64 --decode .ci/release-2.3.24-polish.patch.gz.b64 > /tmp/release-2.3.24.patch.gz
+          cat .ci/release-2.3.24-polish.patch.gz.b64.part00 .ci/release-2.3.24-polish.patch.gz.b64.part01 .ci/release-2.3.24-polish.patch.gz.b64.part02 .ci/release-2.3.24-polish.patch.gz.b64.part03 .ci/release-2.3.24-polish.patch.gz.b64.part04 > /tmp/release-2.3.24.patch.gz.b64
+          test "$(wc -c < /tmp/release-2.3.24.patch.gz.b64)" = "11484"
+          base64 --decode /tmp/release-2.3.24.patch.gz.b64 > /tmp/release-2.3.24.patch.gz
           gzip -dc /tmp/release-2.3.24.patch.gz > /tmp/release-2.3.24.patch
           echo "0de0b63b7066eab6aef8fbe01ad209da23b11f4c7aff8bce2919583de574e027  /tmp/release-2.3.24.patch" | sha256sum -c -
           git apply --check /tmp/release-2.3.24.patch
