@@ -481,11 +481,32 @@ jobs:
           grep -q 'route=true omx=' app/src/main/java/com/embyplayernext/he/playback/RockchipHybridRenderersFactory.kt
           grep -q 'default-media3' app/src/main/java/com/embyplayernext/he/playback/RockchipHybridRenderersFactory.kt
 
+      - name: Apply 2.3.23 release-candidate playback and detail UI
+        shell: bash
+        run: |
+          base64 --decode .ci/release-2.3.23-detail.kt.gz.b64 > /tmp/release-2.3.23-detail.kt.gz
+          gzip -dc /tmp/release-2.3.23-detail.kt.gz > app/src/main/java/com/embyplayernext/he/ui/screens/DetailScreen.kt
+          base64 --decode .ci/release-2.3.23-release-candidate.py.gz.b64 > /tmp/release-2.3.23.py.gz
+          gzip -dc /tmp/release-2.3.23.py.gz > /tmp/release-2.3.23.py
+          python3 /tmp/release-2.3.23.py
+          grep -q 'versionCode = 146' app/build.gradle.kts
+          grep -q 'versionName = "2.3.23"' app/build.gradle.kts
+          grep -q 'hasVendorOmxHevc' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
+          grep -q 'RKHybridSync' app/src/main/java/com/embyplayernext/he/playback/RockchipDirectVideoRenderer.kt
+          grep -q '更多来自' app/src/main/java/com/embyplayernext/he/ui/screens/DetailScreen.kt
+          grep -q 'DetailBackdrop' app/src/main/java/com/embyplayernext/he/ui/screens/DetailScreen.kt
+          grep -q 'FocusActionButton' app/src/main/java/com/embyplayernext/he/ui/screens/DetailScreen.kt
+          ! grep -R -q 'playbackEngine\|media3RockchipMode' app/src/main/java
+          ! grep -q 'superjianpang' app/build.gradle.kts
+          test ! -e app/src/main/java/com/embyplayernext/he/ui/screens/DirectCodecDiagnosticScreen.kt
+          test ! -e app/src/main/java/com/embyplayernext/he/ui/screens/IjkPlayerDiagnosticScreen.kt
+          test ! -e app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt
+
       - name: Package final Android source
         shell: bash
         run: |
-          SRC_DIR=/tmp/EmbyPlayerNext-v2.3.22-source
-          SRC_ZIP=/tmp/EmbyPlayerNext-v2.3.22-android-source.zip
+          SRC_DIR=/tmp/EmbyPlayerNext-v2.3.23-source
+          SRC_ZIP=/tmp/EmbyPlayerNext-v2.3.23-android-source.zip
           rm -rf "$SRC_DIR" "$SRC_ZIP"
           mkdir -p "$SRC_DIR"
           cp -a app "$SRC_DIR/"
@@ -495,19 +516,21 @@ jobs:
             fi
           done
           rm -rf "$SRC_DIR/app/build" "$SRC_DIR/.gradle" "$SRC_DIR/build"
-          grep -q 'versionCode = 145' "$SRC_DIR/app/build.gradle.kts"
-          grep -q 'versionName = "2.3.22"' "$SRC_DIR/app/build.gradle.kts"
-          grep -q 'IjkStats' "$SRC_DIR/app/src/main/java/com/embyplayernext/he/ui/screens/IjkPlayerDiagnosticScreen.kt"
-          grep -q 'IjkVideoStall' "$SRC_DIR/app/src/main/java/com/embyplayernext/he/ui/screens/IjkPlayerDiagnosticScreen.kt"
-          grep -q 'forceReleaseForSeek' "$SRC_DIR/app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt"
+          grep -q 'versionCode = 146' "$SRC_DIR/app/build.gradle.kts"
+          grep -q 'versionName = "2.3.23"' "$SRC_DIR/app/build.gradle.kts"
+          grep -q 'RKHybridSync' "$SRC_DIR/app/src/main/java/com/embyplayernext/he/playback/RockchipDirectVideoRenderer.kt"
+          grep -q '更多来自' "$SRC_DIR/app/src/main/java/com/embyplayernext/he/ui/screens/DetailScreen.kt"
+          ! grep -R -q 'playbackEngine\|media3RockchipMode' "$SRC_DIR/app/src/main/java"
+          test ! -e "$SRC_DIR/app/src/main/java/com/embyplayernext/he/ui/screens/DirectCodecDiagnosticScreen.kt"
+          test ! -e "$SRC_DIR/app/src/main/java/com/embyplayernext/he/ui/screens/IjkPlayerDiagnosticScreen.kt"
           (cd /tmp && zip -qr "$SRC_ZIP" "$(basename "$SRC_DIR")")
           sha256sum "$SRC_ZIP"
 
       - name: Upload final Android source
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.22-android-source
-          path: /tmp/EmbyPlayerNext-v2.3.22-android-source.zip
+          name: EmbyPlayerNext-v2.3.23-android-source
+          path: /tmp/EmbyPlayerNext-v2.3.23-android-source.zip
           if-no-files-found: error
           retention-days: 14
 
@@ -547,7 +570,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.22-arm64-debug
+          name: EmbyPlayerNext-v2.3.23-arm64-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: ignore
           retention-days: 14
@@ -556,7 +579,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.22-arm64-release-unsigned
+          name: EmbyPlayerNext-v2.3.23-arm64-release-unsigned
           path: app/build/outputs/apk/release/app-release-unsigned.apk
           if-no-files-found: ignore
           retention-days: 14
