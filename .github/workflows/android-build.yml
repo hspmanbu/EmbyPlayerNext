@@ -489,7 +489,10 @@ jobs:
           base64 --decode .ci/release-2.3.23-release-candidate.py.gz.b64 > /tmp/release-2.3.23.py.gz
           gzip -dc /tmp/release-2.3.23.py.gz > /tmp/release-2.3.23.py
           python3 /tmp/release-2.3.23.py
-          grep -q '^import androidx.media3.common.MimeTypes          grep -q 'versionName = "2.3.23"' app/build.gradle.kts
+          sed -i '/import androidx.media3.common.C/a import androidx.media3.common.MimeTypes' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
+          grep -q 'import androidx.media3.common.MimeTypes' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
+          grep -q 'versionCode = 146' app/build.gradle.kts
+          grep -q 'versionName = "2.3.23"' app/build.gradle.kts
           grep -q 'hasVendorOmxHevc' app/src/main/java/com/embyplayernext/he/playback/PlaybackService.kt
           grep -q 'RKHybridSync' app/src/main/java/com/embyplayernext/he/playback/RockchipDirectVideoRenderer.kt
           grep -q '更多来自' app/src/main/java/com/embyplayernext/he/ui/screens/DetailScreen.kt
