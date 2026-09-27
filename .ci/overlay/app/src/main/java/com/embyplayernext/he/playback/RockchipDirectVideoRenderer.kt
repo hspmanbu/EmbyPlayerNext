@@ -9,7 +9,7 @@ import android.os.SystemClock
 import android.view.Surface
 import androidx.media3.common.C
 import androidx.media3.common.Format
-import androidx.media3.common.FormatHolder
+import androidx.media3.exoplayer.FormatHolder
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.VideoSize
