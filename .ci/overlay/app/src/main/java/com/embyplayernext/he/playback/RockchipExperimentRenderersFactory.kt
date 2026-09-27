@@ -6,8 +6,10 @@ import android.content.Context
 import android.media.MediaFormat
 import android.os.Build
 import android.os.Handler
+import android.os.SystemClock
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
+import androidx.media3.decoder.DecoderInputBuffer
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.Renderer
@@ -17,6 +19,7 @@ import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.video.MediaCodecVideoRenderer
 import androidx.media3.exoplayer.video.VideoRendererEventListener
 import com.embyplayernext.he.util.DiagnosticsLogger
+import java.nio.ByteBuffer
 import java.util.ArrayList
 import java.util.concurrent.atomic.AtomicLong
 
@@ -90,6 +93,12 @@ private class RockchipExperimentVideoRenderer(
     private val appContext = context.applicationContext
     private val prefs = appContext.getSharedPreferences("emby_player_prefs", Context.MODE_PRIVATE)
     private val codecGeneration = AtomicLong(0L)
+    private var seekGeneration = 0L
+    private var pendingSeekGeneration = -1L
+    private var seekTargetUs = Long.MIN_VALUE
+    private var seekFirstInputUs = Long.MIN_VALUE
+    private var seekStartRealtimeMs = 0L
+    private var seekStallLogged = false
 
     private fun experimentMode(): String {
         if (!prefs.getBoolean("hardware_compatibility_mode", false)) return "default"
@@ -98,6 +107,134 @@ private class RockchipExperimentVideoRenderer(
 
     private fun isTarget(format: Format): Boolean =
         format.sampleMimeType.equals(MimeTypes.VIDEO_H265, ignoreCase = true)
+
+
+    override fun onPositionReset(positionUs: Long, joining: Boolean) {
+        val directMode = experimentMode() == "directcodec_renderer"
+        val hadCodec = getCodec() != null
+        if (directMode && hadCodec) {
+            seekGeneration += 1L
+            pendingSeekGeneration = seekGeneration
+            seekTargetUs = positionUs
+            seekFirstInputUs = Long.MIN_VALUE
+            seekStartRealtimeMs = SystemClock.elapsedRealtime()
+            seekStallLogged = false
+            logger.log(
+                "RKSeek",
+                "begin generation=$seekGeneration targetUs=$positionUs codec=${getCodecInfo()?.name} thread=${Thread.currentThread().name}",
+            )
+        }
+        super.onPositionReset(positionUs, joining)
+        if (directMode && hadCodec) {
+            logger.log(
+                "RKSeek",
+                "flush-complete generation=$seekGeneration targetUs=$positionUs codec=${getCodecInfo()?.name}",
+            )
+        }
+    }
+
+    override fun resetCodecStateForFlush() {
+        super.resetCodecStateForFlush()
+        if (experimentMode() == "directcodec_renderer" && pendingSeekGeneration >= 0L) {
+            logger.log(
+                "RKSeek",
+                "codec-state-reset generation=$pendingSeekGeneration targetUs=$seekTargetUs",
+            )
+        }
+    }
+
+    override fun onQueueInputBuffer(buffer: DecoderInputBuffer) {
+        super.onQueueInputBuffer(buffer)
+        if (
+            experimentMode() == "directcodec_renderer" &&
+            pendingSeekGeneration >= 0L &&
+            seekFirstInputUs == Long.MIN_VALUE
+        ) {
+            seekFirstInputUs = buffer.timeUs
+            logger.log(
+                "RKSeek",
+                "first-input generation=$pendingSeekGeneration targetUs=$seekTargetUs ptsUs=${buffer.timeUs}",
+            )
+        }
+    }
+
+    override fun processOutputBuffer(
+        positionUs: Long,
+        elapsedRealtimeUs: Long,
+        codec: MediaCodecAdapter?,
+        buffer: ByteBuffer?,
+        bufferIndex: Int,
+        bufferFlags: Int,
+        sampleCount: Int,
+        bufferPresentationTimeUs: Long,
+        isDecodeOnlyBuffer: Boolean,
+        isLastBuffer: Boolean,
+        format: Format,
+    ): Boolean {
+        if (experimentMode() != "directcodec_renderer" || pendingSeekGeneration < 0L) {
+            return super.processOutputBuffer(
+                positionUs,
+                elapsedRealtimeUs,
+                codec,
+                buffer,
+                bufferIndex,
+                bufferFlags,
+                sampleCount,
+                bufferPresentationTimeUs,
+                isDecodeOnlyBuffer,
+                isLastBuffer,
+                format,
+            )
+        }
+
+        val activeCodec = codec ?: return false
+        val generation = pendingSeekGeneration
+        val presentationTimeUs = bufferPresentationTimeUs - getOutputStreamOffsetUs()
+        val clearlyBeforeTarget =
+            seekTargetUs != Long.MIN_VALUE && bufferPresentationTimeUs + 250_000L < seekTargetUs
+
+        if (!isLastBuffer && (isDecodeOnlyBuffer || clearlyBeforeTarget)) {
+            logger.log(
+                "RKSeek",
+                "discard-old generation=$generation targetUs=$seekTargetUs ptsUs=$bufferPresentationTimeUs decodeOnly=$isDecodeOnlyBuffer",
+            )
+            skipOutputBuffer(activeCodec, bufferIndex, presentationTimeUs)
+            return true
+        }
+
+        // During the seek boundary bypass Media3's frame-release controller for exactly the first
+        // valid frame. This mirrors the DirectCodec/ijk strategy: flush old decoder state, reject
+        // pre-seek output, then make the new generation visible immediately. Normal Media3 timing
+        // resumes from the following frame.
+        @Suppress("DEPRECATION")
+        super.renderOutputBuffer(activeCodec, bufferIndex, presentationTimeUs)
+        pendingSeekGeneration = -1L
+        val elapsedMs = (SystemClock.elapsedRealtime() - seekStartRealtimeMs).coerceAtLeast(0L)
+        logger.log(
+            "RKSeek",
+            "first-output generation=$generation targetUs=$seekTargetUs ptsUs=$bufferPresentationTimeUs elapsedMs=$elapsedMs immediate=true",
+        )
+        return true
+    }
+
+    override fun render(positionUs: Long, elapsedRealtimeUs: Long) {
+        super.render(positionUs, elapsedRealtimeUs)
+        if (
+            experimentMode() == "directcodec_renderer" &&
+            pendingSeekGeneration >= 0L &&
+            seekFirstInputUs != Long.MIN_VALUE &&
+            !seekStallLogged
+        ) {
+            val elapsedMs = SystemClock.elapsedRealtime() - seekStartRealtimeMs
+            if (elapsedMs >= 900L) {
+                seekStallLogged = true
+                logger.log(
+                    "RKSeek",
+                    "stall generation=$pendingSeekGeneration targetUs=$seekTargetUs firstInputUs=$seekFirstInputUs elapsedMs=$elapsedMs codec=${getCodecInfo()?.name}",
+                )
+            }
+        }
+    }
 
     override fun canReuseCodec(
         codecInfo: MediaCodecInfo,

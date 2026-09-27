@@ -98,6 +98,7 @@ fun DirectCodecDiagnosticScreen(
     val frameAtomic = remember(descriptor.playSessionId) { AtomicLong(0L) }
     val speedMilliAtomic = remember(descriptor.playSessionId) { AtomicLong(1000L) }
     val speedSerialAtomic = remember(descriptor.playSessionId) { AtomicLong(0L) }
+    val runGenerationAtomic = remember(descriptor.playSessionId) { AtomicLong(0L) }
     val focusRequester = remember { FocusRequester() }
     val playFocusRequester = remember { FocusRequester() }
 
@@ -141,6 +142,8 @@ fun DirectCodecDiagnosticScreen(
             }
 
             override fun surfaceDestroyed(holder: SurfaceHolder) {
+                runGenerationAtomic.incrementAndGet()
+                stopAtomic.set(true)
                 surfaceReady = false
                 logger.log("DirectCodec", "surfaceDestroyed item=${descriptor.item.id}")
             }
@@ -167,6 +170,7 @@ fun DirectCodecDiagnosticScreen(
 
     LaunchedEffect(surfaceReady, descriptor.playSessionId) {
         if (!surfaceReady) return@LaunchedEffect
+        val runGeneration = runGenerationAtomic.incrementAndGet()
         stopAtomic.set(false)
         failed = null
         ended = false
@@ -239,7 +243,10 @@ fun DirectCodecDiagnosticScreen(
                     codec = mc
                     mc.configure(minimal, outputSurface, null, 0)
                     mc.start()
-                    logger.log("DirectCodec", "codecStarted item=${descriptor.item.id} codec=${mc.name} mime=$mime size=${width}x$height")
+                    logger.log("DirectCodec", "codecStarted item=${descriptor.item.id} codec=${mc.name} mime=$mime size=${width}x$height generation=$runGeneration")
+                    withContext(Dispatchers.Main) {
+                        if (runGeneration == runGenerationAtomic.get()) failed = null
+                    }
 
                     val initialUs = descriptor.initialPositionMs.coerceAtLeast(0L) * 1000L
                     if (initialUs > 0L) {
@@ -254,7 +261,12 @@ fun DirectCodecDiagnosticScreen(
                     var baseRealtimeNs = 0L
                     var appliedSpeedSerial = speedSerialAtomic.get()
 
-                    while (currentCoroutineContext().isActive && !stopAtomic.get() && !outputDone) {
+                    while (
+                        currentCoroutineContext().isActive &&
+                        !stopAtomic.get() &&
+                        runGeneration == runGenerationAtomic.get() &&
+                        !outputDone
+                    ) {
                         if (pausedAtomic.get()) {
                             Thread.sleep(10)
                             continue
@@ -368,11 +380,19 @@ fun DirectCodecDiagnosticScreen(
             )
             throw cancel
         } catch (t: Throwable) {
-            failed = "${t.javaClass.simpleName}: ${t.message ?: "unknown"}"
-            logger.log(
-                "DirectCodecError",
-                "item=${descriptor.item.id} type=${t.javaClass.name} message=${t.message} cause=${t.cause?.javaClass?.name}:${t.cause?.message}",
-            )
+            val currentGeneration = runGenerationAtomic.get()
+            if (runGeneration == currentGeneration && !stopAtomic.get()) {
+                failed = "${t.javaClass.simpleName}: ${t.message ?: "unknown"}"
+                logger.log(
+                    "DirectCodecError",
+                    "item=${descriptor.item.id} generation=$runGeneration type=${t.javaClass.name} message=${t.message} cause=${t.cause?.javaClass?.name}:${t.cause?.message}",
+                )
+            } else {
+                logger.log(
+                    "DirectCodecError",
+                    "suppressed-stale item=${descriptor.item.id} generation=$runGeneration current=$currentGeneration type=${t.javaClass.name} message=${t.message}",
+                )
+            }
         }
     }
 

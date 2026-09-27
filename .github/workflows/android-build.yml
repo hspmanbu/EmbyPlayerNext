@@ -407,6 +407,19 @@ jobs:
           ! test -e app/src/main/java/com/embyplayernext/he/ui/screens/LibVlcPlayerScreen.kt
           ! grep -R -n 'LibVlcPlayerScreen\|vlcHardwareMode' app/src/main app/build.gradle.kts
 
+      - name: Apply 2.3.18 Rockchip seek-generation recovery
+        shell: bash
+        run: |
+          cp .ci/overlay/app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt
+          cp .ci/overlay/app/src/main/java/com/embyplayernext/he/ui/screens/DirectCodecDiagnosticScreen.kt app/src/main/java/com/embyplayernext/he/ui/screens/DirectCodecDiagnosticScreen.kt
+          python3 .ci/release-2.3.18-rk-seek-generation.py
+          grep -q 'versionCode = 141' app/build.gradle.kts
+          grep -q 'versionName = "2.3.18"' app/build.gradle.kts
+          grep -q 'pendingSeekGeneration' app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt
+          grep -q 'discard-old generation=' app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt
+          grep -q 'first-output generation=' app/src/main/java/com/embyplayernext/he/playback/RockchipExperimentRenderersFactory.kt
+          grep -q 'suppressed-stale' app/src/main/java/com/embyplayernext/he/ui/screens/DirectCodecDiagnosticScreen.kt
+
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
@@ -443,7 +456,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.17-arm64-debug
+          name: EmbyPlayerNext-v2.3.18-arm64-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: ignore
           retention-days: 14
@@ -452,7 +465,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.17-arm64-release-unsigned
+          name: EmbyPlayerNext-v2.3.18-arm64-release-unsigned
           path: app/build/outputs/apk/release/app-release-unsigned.apk
           if-no-files-found: ignore
           retention-days: 14
