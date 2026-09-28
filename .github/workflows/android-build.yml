@@ -556,11 +556,25 @@ jobs:
           grep -q 'TextAlign.Center' app/src/main/java/com/embyplayernext/he/ui/components/MediaCards.kt
           grep -q 'minLines = 2' app/src/main/java/com/embyplayernext/he/ui/components/MediaCards.kt
 
+      - name: Apply 2.3.27 lightweight player HUD and controls
+        shell: bash
+        run: |
+          base64 --decode .ci/release-2.3.27-player-ui.py.gz.b64 > /tmp/release-2.3.27.py.gz
+          gzip -dc /tmp/release-2.3.27.py.gz > /tmp/release-2.3.27.py
+          python3 /tmp/release-2.3.27.py
+          grep -q 'versionCode = 150' app/build.gradle.kts
+          grep -q 'versionName = "2.3.27"' app/build.gradle.kts
+          grep -q 'GestureEdgeBar' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
+          grep -q 'GestureSeekHint' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
+          grep -q 'collectIsPressedAsState' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
+          grep -q 'Color.Transparent' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
+          ! grep -q 'GestureHudCard' app/src/main/java/com/embyplayernext/he/ui/screens/PlayerScreen.kt
+
       - name: Package final Android source
         shell: bash
         run: |
-          SRC_DIR=/tmp/EmbyPlayerNext-v2.3.26-source
-          SRC_ZIP=/tmp/EmbyPlayerNext-v2.3.26-android-source.zip
+          SRC_DIR=/tmp/EmbyPlayerNext-v2.3.27-source
+          SRC_ZIP=/tmp/EmbyPlayerNext-v2.3.27-android-source.zip
           rm -rf "$SRC_DIR" "$SRC_ZIP"
           mkdir -p "$SRC_DIR"
           cp -a app "$SRC_DIR/"
@@ -570,8 +584,8 @@ jobs:
             fi
           done
           rm -rf "$SRC_DIR/app/build" "$SRC_DIR/.gradle" "$SRC_DIR/build"
-          grep -q 'versionCode = 149' "$SRC_DIR/app/build.gradle.kts"
-          grep -q 'versionName = "2.3.26"' "$SRC_DIR/app/build.gradle.kts"
+          grep -q 'versionCode = 150' "$SRC_DIR/app/build.gradle.kts"
+          grep -q 'versionName = "2.3.27"' "$SRC_DIR/app/build.gradle.kts"
           grep -q 'RKHybridSync' "$SRC_DIR/app/src/main/java/com/embyplayernext/he/playback/RockchipDirectVideoRenderer.kt"
           grep -q '更多来自' "$SRC_DIR/app/src/main/java/com/embyplayernext/he/ui/screens/DetailScreen.kt"
           ! grep -R -q 'playbackEngine\|media3RockchipMode' "$SRC_DIR/app/src/main/java"
@@ -583,8 +597,8 @@ jobs:
       - name: Upload final Android source
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.26-android-source
-          path: /tmp/EmbyPlayerNext-v2.3.26-android-source.zip
+          name: EmbyPlayerNext-v2.3.27-android-source
+          path: /tmp/EmbyPlayerNext-v2.3.27-android-source.zip
           if-no-files-found: error
           retention-days: 14
 
@@ -624,7 +638,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.26-arm64-debug
+          name: EmbyPlayerNext-v2.3.27-arm64-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: ignore
           retention-days: 14
@@ -633,7 +647,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerNext-v2.3.26-arm64-release-unsigned
+          name: EmbyPlayerNext-v2.3.27-arm64-release-unsigned
           path: app/build/outputs/apk/release/app-release-unsigned.apk
           if-no-files-found: ignore
           retention-days: 14
