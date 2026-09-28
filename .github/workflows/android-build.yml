@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -23,6 +23,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: feature/ui-library-rework-20260925
 
       - name: Reconstruct source bundle
         shell: bash
@@ -631,6 +633,11 @@ jobs:
           grep -q "package: name='com.embyplayernext.he'" /tmp/badging.txt
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$APK" | tee /tmp/signature.txt
           tr '[:upper:]' '[:lower:]' < /tmp/signature.txt | tr -d ':' | grep -q '9f72c5f3666451dd793a41079a3d8cf21f5ae82f9800d574583ec8db93228e8a'
+
+      - name: Migrate repository to source-first layout
+        if: github.event_name == 'pull_request' && github.head_ref == 'feature/ui-library-rework-20260925'
+        shell: bash
+        run: bash .ci/migrate-source-first.sh
 
       - name: Upload debug APK
         if: always()
