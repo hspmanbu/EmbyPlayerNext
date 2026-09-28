@@ -83,6 +83,8 @@ Debug APK：
 正式发布 APK/AAB 应使用独立的 release signing key，并通过本地安全配置或 GitHub Actions Secrets 注入；不要把正式私钥提交到仓库。
 EOF
 
+git checkout HEAD -- .github/workflows/android-build.yml
+
 git config user.name 'github-actions[bot]'
 git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 git add -A
