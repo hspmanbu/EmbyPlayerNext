@@ -1,87 +1,146 @@
 # EmbyPlayerNext
 
-这是基于 `EmbyPlayer-v1.3.12-Build17.apk` 功能基线重新实现的 Android/Kotlin 源码项目。目标不是继续修改 DEX，而是建立可维护的源码版本，后续可正常调试、升级和签名。
+<div align="center">
 
-## 功能基线
+![Android](https://img.shields.io/badge/Platform-Android-3DDC84?logo=android&logoColor=white)
+![SDK](https://img.shields.io/badge/Compile%20SDK-35-blue)
+![Kotlin](https://img.shields.io/badge/Kotlin-2.0.21-7F52FF?logo=kotlin&logoColor=white)
+![Compose](https://img.shields.io/badge/Jetpack%20Compose-M3-4285F4?logo=jetpackcompose&logoColor=white)
+![Media3](https://img.shields.io/badge/ExoPlayer-Media3%201.5.1-red)
+![Version](https://img.shields.io/badge/Version-v2.3.27%20(Build%20150)-green)
 
-- Emby 服务器登录、测试连接、Token 持久化、切换服务器、退出登录。
-- 首页：媒体库、继续观看、刷新。
-- 媒体库：文件夹浏览、影片/文件夹/收藏模式、搜索、面包屑导航。
-- 每个媒体库独立保存排序字段和排序方向。
-- 详情：海报/背景、剧情、年份、评分、分级、时长、类型、演职人员。
-- Series：季/集浏览；点击演职人员查看该人员作品。
-- 收藏/取消收藏、标记已看/未看、服务器删除项目。
-- 续播、从头播放。
-- Media3 播放器：播放/暂停、快退/快进、双击快进/快退、横向滑动跳转、长按右侧临时 2x。
-- 字幕轨、音轨、倍速、适应/填充/拉伸、屏幕锁定、网速显示。
-- MediaSessionService：系统媒体控制/后台媒体会话；App 进入后台自动暂停。
-- 硬件解码优先/软件解码偏好切换。
-- 本地磁盘 LRU 缓存：0/64/128/256/512 MB。
-- UI 缩放：85%/100%/115%/125%/140%/160%。
-- 独立后退/前进步长。
-- 动态端口：目标域名、超时、抓取页面、服务名、立即测试、自动切换并重试。
-- App 内诊断日志导出，无需 ADB。
+**为 Android 手机、平板及 Android TV 大屏深度优化的原生 Emby 客户端**
 
-## STRM 与播放进度的重构
+</div>
 
-旧 APK 直接拼 `/Videos/{Id}/stream`，且 Start/Progress/Stopped 的会话字段不一致。新项目按完整会话实现：
+---
 
-1. `POST /Items/{Id}/PlaybackInfo`
-2. 获取服务器 `PlaySessionId`、`MediaSourceId`、`MediaSource.RunTimeTicks`
-3. 优先使用 `DirectStreamUrl`；必要时使用 `TranscodingUrl`
-4. `/Sessions/Playing` 上报 Start
-5. 每约 10 秒以及 Pause/Unpause 上报 `/Sessions/Playing/Progress`
-6. Progress 同时发送 `PositionTicks`、有效的 `RunTimeTicks`、`MediaSourceId`、`PlaySessionId`
-7. STRM 如果服务器没有时长，等 Media3 得到有效 `duration` 后再上报；不会发送 `RunTimeTicks=0` 或 `TIME_UNSET`
-8. 退出只发送一次 `/Sessions/Playing/Stopped`
-9. 不再使用旧 APK 那个 Stop 后“残缺 UserData POST”覆盖服务器播放百分比
+## 📖 项目简介
 
-## 动态端口
+**EmbyPlayerNext** 是一款基于现代化 Android 技术栈（Jetpack Compose + Media3）完全重构的原生 Emby 客户端。项目摆脱了旧版逆向维护的局限性，拥有 100% 干净透明的 Kotlin 源码，支持 Android 手机、平板、折叠屏以及 Android TV 大屏设备，兼具精美的现代 Material 3 视觉设计与强大的媒体播放性能。
 
-默认值与旧 APK 一致：
+---
 
-- 目标域名：`jia.hesip.cn`
-- 超时：5 秒
-- 抓取地址：`http://lac.hesip.top:8080/port`
-- 服务名：`emby-nginx`
+## ✨ 核心特性
 
-启用后，当请求发生连接异常、超时、HTTP 502/503/504 且当前服务器匹配目标域名时：
+### 📺 卓越的 Android TV 大屏体验
+- **智能边缘焦点滚动（TvFocusScroll）**：
+  - 彻底重构 D-Pad 遥控器导航逻辑：在当前屏幕视口内移动时，光标平滑移动，**屏幕零多余滑动**；
+  - 只有光标触达可视区域**最底端或最顶端**时，才会触发平滑步进滚动展现下一行/上一行；
+  - 触达列表顶部（第 1 行）时，允许遥控器自然向上聚焦至分类标签栏或搜索栏。
+- **TV 焦点交互动效**：所有卡片均支持 D-Pad 获得焦点时的 `1.05x` 放大微动效、主题色高亮边框和景深阴影。
+- **宽屏与超宽屏适配**：针对 1080P/4K 电视大屏做了容器最大宽度限制与居中排版，避免卡片在超宽比例下被拉扯变形。
 
-1. 抓取端口页面；
-2. 优先在包含服务名的 HTML 表格行中提取合法端口；
-3. 替换当前服务器 URL 的端口；
-4. 持久化新 URL；
-5. 自动重试原请求。
+### 📚 现代化的媒体库浏览与排版
+- **响应式自适应列数（Auto）**：
+  - 手机端自动适配 3 列，平板/折叠屏 4～5 列，电视/大屏 6～7 列；
+  - 支持在 2～8 列之间自由手动调节，每个媒体库独立持久化记忆。
+- **双视图自由切换（网格 / 列表）**：
+  - **海报流网格**：视觉沉浸，适合快速海报点播；
+  - **信息列表视图（`MediaListItem`）**：清晰展示片名、收藏/已看状态、评分、上映年代、影片时长、流派标签与剧情简介摘要。
+- **片名排版优化**：彻底移除多余占位约束，单行片名自然紧凑对齐年代与时长，杜绝大片空白。
+- **视觉徽章（Badges）**：
+  - 评分角标：金黄色半透明评分标签（如 `★ 8.5`）；
+  - 分辨率角标：自动识别媒体流并标出 `4K`、`1080P`、`720P`；
+  - 未播胶囊：直观展示剧集/季未看集数统计，已看状态显示绿底对勾。
+- **快速控制**：排序栏提供一键升序/降序快捷切换按钮，并在滚动超过 5 项时自动淡入**回到顶部浮动按钮（FAB）**。
 
-播放器网络错误时也会触发同一套动态端口恢复逻辑，并从当前播放位置重新建立 PlaybackInfo。
+### 🎬 专业级播放器（Media3 + FFmpeg）
+- **流媒体协议支持**：DirectPlay 直流、HLS、DASH、SmoothStreaming、RTSP。
+- **软硬件解码**：
+  - 支持系统硬件解码优先与软件解码兼容模式切换；
+  - 集成 Jellyfin Media3 FFmpeg 解码扩展（`media3-ffmpeg-decoder:1.5.0+1`），大幅提升非常规音视频格式与特殊容器的播放兼容性。
+- **播放会话生命周期**：
+  - 严格遵循 Emby 标准会话机制（`PlaybackInfo` 获取 `PlaySessionId`、`MediaSourceId`）；
+  - 精确周期上报 `/Sessions/Playing/Progress`，自动上报 `Started` 与 `Stopped`；
+  - 针对 STRM 外链和动态源，等待有效媒体时长（Duration）就绪后再规范上报，杜绝脏进度覆盖。
+- **手势与控制**：横向滑动快进/快退、双击左/右进退、长按右半屏临时 2x 倍速、音轨/字幕轨切换、屏幕锁定、实时网络流速显示。
+- **MediaSessionService 后台会话**：系统通知栏媒体控制器，支持进入后台暂停与通知恢复。
 
-## 构建
+### 🛠️ 高级功能与容灾机制
+- **动态端口解析（Auto-Port）**：
+  - 针对使用 DDNS 或动态端口映射的家庭服务器，当发生网络异常（超时、502/503/504 等）时，自动抓取指定状态页提取最新可用端口并平滑重试请求。
+- **本地磁盘 LRU 缓存**：支持自定义媒体缓存容量（0 / 64 / 128 / 256 / 512 MB）。
+- **UI 缩放引擎**：内置 85% ~ 160% 多档界面缩放，轻松适配车机、投影仪、掌机等特殊 DPI 屏幕。
+- **应用内诊断日志**：一键导出运行与解码日志，无需连接电脑 ADB 抓包。
 
-项目使用：
+---
 
-- AGP 8.7.3
-- Kotlin 2.0.21
-- compileSdk/targetSdk 35
-- Java 17
-- Compose Material 3
-- Media3 1.5.1（含 HLS/DASH/SmoothStreaming/RTSP）
-- Jellyfin Media3 FFmpeg decoder 1.5.0+1（用于 FFmpeg 扩展解码；GPLv3，发布二进制时需遵守其许可证）
-- OkHttp 4.12.0
+## 📦 项目结构
 
-在 Android Studio 中打开项目，安装 Android SDK 35 后 Sync，然后构建 `app`。项目没有沿用原 APK 的私钥，首次安装需要卸载原签名不同的包。
-
-> 当前执行环境没有 Android SDK/Gradle 依赖缓存，因此此处完成的是源码工程和静态审计，未在该环境生成可安装 APK。首次在 Android Studio 编译时如遇到具体依赖/API 版本错误，可直接按编译信息继续调整源码，不再需要操作 DEX。
-
-## 包名
-
-`applicationId = com.aistudio.embyplayer.armx`，与旧 APK 一致，便于服务器端设备识别和功能迁移；由于签名不同，不能直接覆盖旧签名安装。
-
-## GitHub Actions 构建
-
-仓库已包含 `.github/workflows/android-build.yml`。推送到 `main`/`master`，或在 Actions 页面手动运行 `Android Build`，CI 会自动安装 JDK 17、Gradle 8.9、Android SDK 35，并执行：
-
-```bash
-gradle --no-daemon --stacktrace :app:assembleDebug
+```
+EmbyPlayerNext/
+├── app/
+│   ├── build.gradle.kts                # 应用级构建配置（含 signingConfigs）
+│   ├── ci-debug.keystore               # CI 统一调试密钥库（支持免卸载覆盖安装）
+│   └── src/main/
+│       ├── AndroidManifest.xml
+│       ├── java/com/embyplayernext/he/
+│       │   ├── data/                   # 数据模型、网络请求 (OkHttp)、本地偏好 (AppPreferences)
+│       │   ├── playback/               # Media3 播放内核、后台服务、FFmpeg 渲染工厂
+│       │   ├── ui/                     # Jetpack Compose UI
+│       │   │   ├── components/         # MediaCard、MediaListItem、TvFocusScroll 焦点控制器
+│       │   │   ├── screens/            # Home、Library、Detail、Player、Settings、Search 界面
+│       │   │   └── theme/              # Material 3 主题配色
+│       │   └── util/                   # 设备标识、日志器
+│       └── res/                        # 图标、布局资源、TV 橫幅
+├── .github/workflows/
+│   └── android-build.yml               # GitHub Actions 自动化 CI 构建流
+├── build.gradle.kts                    # 根构建脚本 (AGP 8.7.3, Kotlin 2.0.21)
+├── settings.gradle.kts                 # 仓库源与模块声明
+└── gradlew                             # Gradle Wrapper 启动脚本
 ```
 
-成功后 APK 位于 Actions 的 `EmbyPlayerNext-debug` artifact 中。
+---
+
+## 🛠️ 构建与编译
+
+### 环境要求
+- **JDK**：Java 17 或 21
+- **Android SDK**：API 35 (Android 15)
+- **NDK ABI 过滤**：`arm64-v8a`（如需多架构可在 `app/build.gradle.kts` 中调整）
+
+### 本地构建命令
+
+通过终端直接运行 Gradle Wrapper：
+
+```bash
+# 赋予执行权限
+chmod +x gradlew
+
+# 编译 Release 生产安装包（已自动通过 ci-debug.keystore 签名）
+./gradlew assembleRelease
+
+# 编译 Debug 调试包
+./gradlew assembleDebug
+```
+
+编译产物位置：
+- Release APK: `app/build/outputs/apk/release/app-release.apk`
+- Debug APK: `app/build/outputs/apk/debug/app-debug.apk`
+
+### 签名配置说明
+
+项目已内置并默认启用统一的调试签名库 [`app/ci-debug.keystore`](app/ci-debug.keystore)：
+- **Store / Key Password**：`embyplayernext-ci`
+- **Key Alias**：`embyplayernext-ci`
+- **优点**：无论是本地编译还是 GitHub Actions CI 自动构建出来的 APK，签名证书均保持一致，更新版本时可以直接**覆盖安装**，无需先卸载原应用。
+
+---
+
+## 🚀 GitHub Actions 持续集成 (CI)
+
+仓库内置了 [`.github/workflows/android-build.yml`](.github/workflows/android-build.yml) 自动化流水线：
+- **触发条件**：推送到 `main` 或 `feature/**` 分支，或在 GitHub Actions 页面手动点击 `workflow_dispatch`；
+- **自动化产物**：构建成功后，直接在每期构建详情页面的 Artifacts 区域下载免签 Release / Debug APK。
+
+---
+
+## 📄 开源许可
+
+- 项目源码遵循开源规范，使用的开源依赖包括：
+  - [Jetpack Compose (AndroidX)](https://developer.android.com/jetpack/compose) - Apache 2.0
+  - [AndroidX Media3](https://github.com/androidx/media) - Apache 2.0
+  - [Jellyfin Media3 FFmpeg Decoder](https://github.com/jellyfin/jellyfin-androidtv) - GPLv3
+  - [Coil](https://github.com/coil-kt/coil) - Apache 2.0
+  - [OkHttp](https://github.com/square/okhttp) - Apache 2.0
