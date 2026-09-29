@@ -2,14 +2,14 @@
 
 <div align="center">
 
-![Android](https://img.shields.io/badge/Platform-Android%20%7C%20TV-3DDC84?logo=android&logoColor=white)
+![Android](https://img.shields.io/badge/Platform-Android%20(Phone%20%7C%20Tablet%20%7C%20TV)-3DDC84?logo=android&logoColor=white)
 ![SDK](https://img.shields.io/badge/Compile%20SDK-35-blue)
 ![Kotlin](https://img.shields.io/badge/Kotlin-2.0.21-7F52FF?logo=kotlin&logoColor=white)
 ![Compose](https://img.shields.io/badge/Jetpack%20Compose-M3-4285F4?logo=jetpackcompose&logoColor=white)
 ![Media3](https://img.shields.io/badge/ExoPlayer-Media3%201.5.1-red)
 ![Version](https://img.shields.io/badge/Version-v2.3.27%20(Build%20150)-green)
 
-**专为家庭影音与 TV 盒子打造的原生 Emby 客户端**  
+**全能型 Android 原生 Emby 客户端（手机 · 平板 · TV 大屏完美适配）**  
 *动态端口自动解析与故障自愈 · 瑞芯微(Rockchip等)电视芯片硬解兼容改造 · 自适应双视图排版 · Media3 强劲播放内核*
 
 </div>
@@ -18,12 +18,12 @@
 
 ## 💡 为什么开发 EmbyPlayerNext？
 
-在实际家庭影音与远程串流场景中，玩家常常面临两大核心痛点：
+在实际 Emby 远程串流与跨设备播放场景中，玩家常常面临两大核心痛点：
 
-1. **公网端口漂移**：家庭宽带没有固定公网 IPv4，或者使用了动态端口映射、NAT 穿透、内网穿透（FRP / DDNS 端口定时变动）。一旦端口变化，所有客户端都需要手动重新配置服务器地址，家人在电视端根本无法正常使用。
-2. **TV 电视盒子播放 4K 崩溃/黑屏**：市面上大量 Android 电视盒子、投影仪、车机采用国产 SoC（如**瑞芯微 Rockchip RK3588 / RK3399 / RK3568 / RK3328** 等）。原生 ExoPlayer / Media3 在调用硬件解码 4K H.265 (HEVC) 片源时，极易因异步队列阻塞或驱动不规范而发生**黑屏、卡死、声画脱节甚至应用崩溃闪退**。
+1. **公网端口漂移**：家庭宽带没有固定公网 IPv4，或者使用了动态端口映射、NAT 穿透、内网穿透（FRP / DDNS 端口定时变动）。一旦端口变化，所有手机、平板、电视客户端都需要手动重新修改服务器地址，极其繁琐，家人在设备端根本无法正常使用。
+2. **TV 电视盒子/车机播放 4K 崩溃/黑屏**：市面上大量 Android 电视盒子、投影仪、车机采用国产 SoC（如**瑞芯微 Rockchip RK3588 / RK3399 / RK3568 / RK3328** 等）。原生 ExoPlayer / Media3 在调用硬件解码 4K H.265 (HEVC) 片源时，极易因异步队列阻塞或驱动不规范而发生**黑屏、卡死、声画脱节甚至应用崩溃闪退**。
 
-**EmbyPlayerNext** 基于 Jetpack Compose 与 AndroidX Media3 架构重构，从底层针对上述两项核心痛点进行了系统级工程改造。
+**EmbyPlayerNext** 基于 Jetpack Compose 与 AndroidX Media3 架构重构，兼顾**手机流畅触控、平板大屏展开与电视遥控器交互**，并从底层针对上述两项核心痛点进行了系统级工程改造。
 
 ---
 
@@ -131,11 +131,14 @@ $$\text{Rockchip 原厂 OMX 直连硬解} \xrightarrow{\text{解码错误}} \tex
 
 ---
 
-## 📱 完善的原生跨设备交互与媒体库体验
+## 📱 手机 · 平板 · TV 全场景优秀交互与媒体库体验
 
-除上述硬核功能外，EmbyPlayerNext 提供了一套成熟现代的原生应用体验：
+EmbyPlayerNext 是一套完整兼顾触控手机与大屏遥控器的多设备原生客户端：
 
-- **全设备自适应**：一套代码完美兼顾 Android TV 大屏（D-Pad 遥控器焦点平移、高亮呼吸边框、大屏防拉伸居中）与 Android 手机/平板（触控手势、边缘滑动快进/快退/音量调节、长按倍速）；
+- **全设备场景完美自适应**：
+  - **手机触控端**：单手友好交互、底部快捷导航、横竖屏自适应、滑动手势快进/快退/亮度/音量控制、长按屏幕右侧临时 2x 倍速、双击两侧微步进跳播；
+  - **平板与折叠屏端**：自适应左侧宽屏导航轨（Navigation Rail）、多列响应式网格与双列信息流；
+  - **Android TV 大屏端**：D-Pad 遥控器边缘平滑焦点漫游、呼吸微动效高亮卡片边框、超宽比例防拉伸居中排版。
 - **响应式媒体库布局**：
   - **自适应列数（Auto）**：手机 3 列、平板 4～5 列、电视 6～7 列，亦支持手动 2～8 列自由调节（独立持久化记忆）；
   - **双视图切换**：海报流网格与详尽列表视图（展示评分、时长、年份、流派与剧情简介）秒级切换；
