@@ -85,7 +85,8 @@ class EmbyViewModel(app: Application) : AndroidViewModel(app) {
     private var seasonGeneration = 0L
     private var busyOperations = 0
     private val detailHistory = ArrayDeque<EmbyItem>()
-    private var episodePlaybackQueue: List<EmbyItem> = emptyList()
+    private val _episodePlaybackQueue = MutableStateFlow<List<EmbyItem>>(emptyList())
+    val episodePlaybackQueue: StateFlow<List<EmbyItem>> = _episodePlaybackQueue
 
     init { if (prefs.config.value.accessToken.isNotBlank()) loadHome() }
 
@@ -142,7 +143,7 @@ class EmbyViewModel(app: Application) : AndroidViewModel(app) {
         _items.value = emptyList()
         _globalSearchResults.value = emptyList()
         _similarItems.value = emptyList()
-        episodePlaybackQueue = emptyList()
+        _episodePlaybackQueue.value = emptyList()
         detailHistory.clear()
         _selectedItem.value = null
         _libraryRestoreItemId.value = null
@@ -384,12 +385,16 @@ class EmbyViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun openEpisode(item: EmbyItem) {
-        if (item.type == "Episode") episodePlaybackQueue = _episodes.value.ifEmpty { episodePlaybackQueue }
+        if (item.type == "Episode" && _episodePlaybackQueue.value.none { it.id == item.id }) {
+            _episodePlaybackQueue.value = _episodes.value.ifEmpty { _episodePlaybackQueue.value }
+        }
         openItem(item)
     }
 
     fun playEpisode(item: EmbyItem, resume: Boolean = item.hasResumePosition) {
-        if (item.type == "Episode") episodePlaybackQueue = _episodes.value.ifEmpty { episodePlaybackQueue }
+        if (item.type == "Episode" && _episodePlaybackQueue.value.none { it.id == item.id }) {
+            _episodePlaybackQueue.value = _episodes.value.ifEmpty { _episodePlaybackQueue.value }
+        }
         play(item, resume)
     }
 
@@ -435,14 +440,16 @@ class EmbyViewModel(app: Application) : AndroidViewModel(app) {
                 } else if (detail.type == "Episode") {
                     val seriesId = detail.seriesId?.takeIf { it.isNotBlank() }
                     val allEpisodes = if (seriesId != null) api.getEpisodes(seriesId, null) else emptyList()
+                    val sortedEpisodes = allEpisodes.sortedWith(compareBy({ it.parentIndexNumber ?: 0 }, { it.indexNumber ?: 0 }))
                     if (generation != detailGeneration) return@launch
-                    val sameSeason = detail.parentIndexNumber?.let { seasonNumber ->
-                        allEpisodes.filter { it.parentIndexNumber == seasonNumber }
+                    val seasonNumber = detail.parentIndexNumber
+                    val sameSeason = if (seasonNumber == null) sortedEpisodes else {
+                        sortedEpisodes.filter { it.parentIndexNumber == seasonNumber }
                     }.orEmpty()
                     _seasons.value = emptyList()
                     _selectedSeasonId.value = null
-                    _episodes.value = sameSeason.ifEmpty { allEpisodes }
-                    if (allEpisodes.any { it.id == detail.id }) episodePlaybackQueue = allEpisodes
+                    _episodes.value = sameSeason.ifEmpty { sortedEpisodes }
+                    if (sortedEpisodes.any { it.id == detail.id }) _episodePlaybackQueue.value = sortedEpisodes
                 } else {
                     _seasons.value = emptyList()
                     _selectedSeasonId.value = null
@@ -535,13 +542,23 @@ class EmbyViewModel(app: Application) : AndroidViewModel(app) {
             _message.value = "该项目不是可直接播放的媒体"
             return@launchBusy
         }
-        if (target.type == "Episode" && episodePlaybackQueue.none { it.id == target.id }) {
-            target.seriesId?.takeIf { it.isNotBlank() }?.let { seriesId ->
-                runCatching { api.getEpisodes(seriesId, null) }
-                    .onSuccess { queue -> if (queue.any { it.id == target.id }) episodePlaybackQueue = queue }
+        if (target.type == "Episode") {
+            val seriesId = target.seriesId?.takeIf { it.isNotBlank() }
+            if (seriesId != null) {
+                val currentQueue = _episodePlaybackQueue.value
+                val needsFullQueue = currentQueue.none { it.id == target.id } ||
+                    currentQueue.any { it.seriesId != seriesId } ||
+                    (_seasons.value.size > 1 && currentQueue.mapNotNull { it.parentIndexNumber }.distinct().size <= 1)
+                if (needsFullQueue) {
+                    runCatching { api.getEpisodes(seriesId, null) }
+                        .onSuccess { queue ->
+                            val sorted = queue.sortedWith(compareBy({ it.parentIndexNumber ?: 0 }, { it.indexNumber ?: 0 }))
+                            if (sorted.any { it.id == target.id }) _episodePlaybackQueue.value = sorted
+                        }
+                }
             }
         } else if (target.type != "Episode") {
-            episodePlaybackQueue = emptyList()
+            _episodePlaybackQueue.value = emptyList()
         }
         runCatching { api.preparePlayback(target, resume) }
             .onSuccess { _activePlayback.value = it; _screen.value = AppScreen.PLAYER }
@@ -553,13 +570,15 @@ class EmbyViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun previousPlaybackItem(currentId: String): EmbyItem? {
-        val index = episodePlaybackQueue.indexOfFirst { it.id == currentId }
-        return if (index > 0) episodePlaybackQueue[index - 1] else null
+        val queue = _episodePlaybackQueue.value
+        val index = queue.indexOfFirst { it.id == currentId }
+        return if (index > 0) queue[index - 1] else null
     }
 
     fun nextPlaybackItem(currentId: String): EmbyItem? {
-        val index = episodePlaybackQueue.indexOfFirst { it.id == currentId }
-        return if (index >= 0 && index < episodePlaybackQueue.lastIndex) episodePlaybackQueue[index + 1] else null
+        val queue = _episodePlaybackQueue.value
+        val index = queue.indexOfFirst { it.id == currentId }
+        return if (index >= 0 && index < queue.lastIndex) queue[index + 1] else null
     }
 
     fun backFromDetail() {

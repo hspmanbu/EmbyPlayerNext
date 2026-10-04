@@ -128,6 +128,12 @@ fun SettingsScreen(
                         config.hardwareCompatibilityMode,
                     ) { onUpdate(config.copy(hardwareCompatibilityMode = it)) }
                     HorizontalDivider()
+                    SwitchRow(
+                        "自动播放下一集",
+                        "剧集单集播放完毕后，自动倒计时并无缝跳转至下一集播放",
+                        config.autoPlayNextEpisode,
+                    ) { onUpdate(config.copy(autoPlayNextEpisode = it)) }
+                    HorizontalDivider()
                     IntChoice(
                         title = "后退步长",
                         current = config.rewindSeconds,

@@ -34,6 +34,7 @@ class AppPreferences(context: Context) {
             cacheMb = safeInt("disk_cache_mb", 128),
             gestureSeekSeconds = safeInt("gesture_seek_seconds", 180),
             allowInsecureHttps = prefs.getBoolean("allow_insecure_https", false),
+            autoPlayNextEpisode = prefs.getBoolean("auto_play_next_episode", true),
         )
     }.getOrElse {
         // Preserve startup even if an older build stored a key with a different primitive type.
@@ -78,6 +79,7 @@ class AppPreferences(context: Context) {
             .putInt("disk_cache_mb", c.cacheMb)
             .putInt("gesture_seek_seconds", c.gestureSeekSeconds)
             .putBoolean("allow_insecure_https", c.allowInsecureHttps)
+            .putBoolean("auto_play_next_episode", c.autoPlayNextEpisode)
             .apply()
         _config.value = c
     }

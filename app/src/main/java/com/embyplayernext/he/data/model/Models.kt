@@ -20,6 +20,7 @@ data class EmbyServerConfig(
     val cacheMb: Int = 128,
     val gestureSeekSeconds: Int = 180,
     val allowInsecureHttps: Boolean = false,
+    val autoPlayNextEpisode: Boolean = true,
 )
 
 data class UserDataItem(

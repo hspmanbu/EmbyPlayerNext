@@ -56,6 +56,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import android.content.pm.PackageManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -147,13 +148,20 @@ fun PlayerScreen(
     var lastObservedFrameCount by remember(descriptor.playSessionId) { mutableLongStateOf(-1L) }
     var lastFrameAdvanceRealtimeMs by remember(descriptor.playSessionId) { mutableLongStateOf(0L) }
     var firstFrameRealtimeMs by remember(descriptor.playSessionId) { mutableLongStateOf(0L) }
+    var autoNextCountdown by remember(descriptor.playSessionId) { mutableIntStateOf(0) }
+    var autoNextCancelled by remember(descriptor.playSessionId) { mutableStateOf(false) }
+    val endedFocusRequester = remember { FocusRequester() }
+    val currentNextItem by rememberUpdatedState(nextItem)
+    val currentConfig by rememberUpdatedState(config)
     val diagnostics = remember { DiagnosticsLogger(context) }
     val rockchipFingerprint = remember {
         listOf(Build.MANUFACTURER, Build.BRAND, Build.HARDWARE, Build.BOARD, Build.DEVICE, Build.PRODUCT).joinToString(" ").lowercase()
     }
     val isRockchip = rockchipFingerprint.contains("rockchip") || rockchipFingerprint.contains("rk356") || Build.HARDWARE.lowercase().startsWith("rk")
     val isHevc = descriptor.item.mediaStreams.any { it.type.equals("Video", true) && it.codec?.contains("hevc", true) == true }
-    val safeResumeMode = config.hardwareCompatibilityMode && isRockchip && isHevc && descriptor.playMethod == "DirectPlay" && descriptor.initialPositionMs > 0
+    val is4k = (descriptor.item.width ?: 0) >= 3000 || (descriptor.item.height ?: 0) >= 2000
+    val isHighBitrateOr4kHevc = isHevc || is4k
+    val safeResumeMode = config.hardwareCompatibilityMode && isRockchip && isHevc && descriptor.playMethod == "DirectPlay"
 
     val durationMs: Long? = controller?.duration?.takeIf { it > 0 && it != C.TIME_UNSET }
         ?: descriptor.serverRunTimeTicks?.let { it / 10_000L }?.takeIf { it > 0 }
@@ -245,11 +253,42 @@ fun PlayerScreen(
         }
     }
 
+    fun exit() {
+        val player = controller
+        if (!stopped && player != null) {
+            stopped = true
+            scope.launch {
+                onStopped(descriptor, player.currentPosition, player.duration.takeIf { it > 0 && it != C.TIME_UNSET })
+                player.pause()
+                onExit()
+            }
+        } else onExit()
+    }
+
+    fun switchTo(item: EmbyItem) {
+        val player = controller
+        if (player == null) {
+            onPlayAdjacent(item)
+            return
+        }
+        scope.launch {
+            if (!stopped) {
+                stopped = true
+                onStopped(descriptor, player.currentPosition, player.duration.takeIf { it > 0 && it != C.TIME_UNSET })
+            }
+            player.pause()
+            onPlayAdjacent(item)
+        }
+    }
+
     DisposableEffect(controller, descriptor.playSessionId) {
         val player = controller
         val listener = if (player == null) null else object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 playerIsPlaying = isPlaying
+                if (isPlaying) {
+                    error = null
+                }
                 if (started && lastPaused == isPlaying) {
                     lastPaused = !isPlaying
                     scope.launch {
@@ -283,7 +322,7 @@ fun PlayerScreen(
                 val position = player.currentPosition
                 scope.launch {
                     val recovered = onRecover(descriptor, position)
-                    error = if (recovered != null) null else "播放遇到问题，请稍后重试"
+                    error = if (recovered != null || player.isPlaying || renderedFirstFrame) null else "播放遇到问题，请稍后重试"
                 }
             }
 
@@ -300,6 +339,23 @@ fun PlayerScreen(
                             player.currentPosition,
                             player.duration.takeIf { it > 0 && it != C.TIME_UNSET },
                         )
+                        val targetNext = currentNextItem
+                        val autoPlayEnabled = currentConfig.autoPlayNextEpisode || descriptor.item.type == "Episode"
+                        if (targetNext != null && autoPlayEnabled) {
+                            diagnostics.log("PlayerAutoNext", "starting countdown for item=${targetNext.id} name=${targetNext.name}")
+                            autoNextCancelled = false
+                            autoNextCountdown = 3
+                            while (autoNextCountdown > 0 && !autoNextCancelled && isActive) {
+                                delay(1000)
+                                if (!autoNextCancelled) {
+                                    autoNextCountdown -= 1
+                                }
+                            }
+                            if (!autoNextCancelled && isActive) {
+                                diagnostics.log("PlayerAutoNext", "triggering auto-play next: ${targetNext.name}")
+                                switchTo(targetNext)
+                            }
+                        }
                     }
                 }
             }
@@ -317,11 +373,36 @@ fun PlayerScreen(
         var noFirstFrameClockStart = startedAt
         var lastHeartbeat = 0L
         var wasActivelyPlaying = false
-        var frameStallGraceUntilMs = startedAt + 3_500L
+        var frameStallGraceUntilMs = startedAt + 6_000L
+        var lastKnownBufferedPosition = 0L
+        var lastBufferProgressRealtimeMs = startedAt
+        var lastObservedPositionMs = 0L
+        var lastPositionAdvanceRealtimeMs = startedAt
+
         while (isActive && !recoveryInProgress) {
             delay(500)
             val now = SystemClock.elapsedRealtime()
             val elapsed = now - startedAt
+            val currentPos = player.currentPosition
+            val bufferedPos = player.bufferedPosition
+
+            // If player is already playing or has rendered the first frame, ensure error is dismissed
+            if (renderedFirstFrame || player.isPlaying) {
+                if (error != null) error = null
+            }
+
+            // Track buffering progression
+            if (bufferedPos > lastKnownBufferedPosition + 50_000L) {
+                lastKnownBufferedPosition = bufferedPos
+                lastBufferProgressRealtimeMs = now
+            }
+
+            // Track position progression
+            if (currentPos > lastObservedPositionMs + 500L) {
+                lastObservedPositionMs = currentPos
+                lastPositionAdvanceRealtimeMs = now
+            }
+
             val extras = player.sessionExtras
             val mediaId = extras.getString("vf_media_id", "")
             val frameCount = if (mediaId == descriptor.item.id) extras.getLong("vf_count", -1L) else -1L
@@ -329,12 +410,13 @@ fun PlayerScreen(
             if (frameCount >= 0 && frameCount != lastObservedFrameCount) {
                 lastObservedFrameCount = frameCount
                 lastFrameAdvanceRealtimeMs = now
-                diagnostics.log("PlayerFrames", "advance item=${descriptor.item.id} attempt=$recoveryAttempt count=$frameCount lastFrameRealtime=$lastFrameRealtime currentMs=${player.currentPosition}")
+                diagnostics.log("PlayerFrames", "advance item=${descriptor.item.id} attempt=$recoveryAttempt count=$frameCount lastFrameRealtime=$lastFrameRealtime currentMs=$currentPos")
             }
             if (now - lastHeartbeat >= 2_000L) {
                 lastHeartbeat = now
-                diagnostics.log("PlayerRuntime", "heartbeat item=${descriptor.item.id} attempt=$recoveryAttempt state=${player.playbackState} positionMs=${player.currentPosition} bufferedMs=${player.bufferedPosition} totalBufferedMs=${player.totalBufferedDuration} durationMs=${player.duration} loading=${player.isLoading} isPlaying=${player.isPlaying} firstFrame=$renderedFirstFrame frameCount=$frameCount lastFrameAgeMs=${if (lastFrameAdvanceRealtimeMs > 0) now-lastFrameAdvanceRealtimeMs else -1}")
+                diagnostics.log("PlayerRuntime", "heartbeat item=${descriptor.item.id} attempt=$recoveryAttempt state=${player.playbackState} positionMs=$currentPos bufferedMs=$bufferedPos totalBufferedMs=${player.totalBufferedDuration} durationMs=${player.duration} loading=${player.isLoading} isPlaying=${player.isPlaying} firstFrame=$renderedFirstFrame frameCount=$frameCount lastFrameAgeMs=${if (lastFrameAdvanceRealtimeMs > 0) now-lastFrameAdvanceRealtimeMs else -1}")
             }
+
             if (!player.playWhenReady) {
                 noFirstFrameClockStart = now
                 wasActivelyPlaying = false
@@ -342,66 +424,74 @@ fun PlayerScreen(
             }
             val activelyPlaying = player.playWhenReady && player.isPlaying
             if (activelyPlaying && !wasActivelyPlaying) {
-                frameStallGraceUntilMs = now + 3_500L
+                frameStallGraceUntilMs = now + 6_000L
                 if (renderedFirstFrame) lastFrameAdvanceRealtimeMs = now
             }
             wasActivelyPlaying = activelyPlaying
-            val noFirstFrameTimeout = if (recoveryAttempt == 0) 7_000L else 9_000L
-            val noFirstFrame = !renderedFirstFrame && player.playWhenReady && now - noFirstFrameClockStart >= noFirstFrameTimeout
+
+            // Generous timeouts for 4K / HEVC vs standard media:
+            // 4K HEVC: 22s for attempt 0, 30s for attempt 1
+            // Standard: 14s for attempt 0, 18s for attempt 1
+            val baseTimeout = when {
+                isHighBitrateOr4kHevc && recoveryAttempt == 0 -> 22_000L
+                isHighBitrateOr4kHevc && recoveryAttempt > 0 -> 30_000L
+                recoveryAttempt == 0 -> 14_000L
+                else -> 18_000L
+            }
+
+            // As long as the player is buffering/loading data and making progress, grant up to 45s of total grace
+            val isBufferingProgressing = (player.playbackState == Player.STATE_BUFFERING || player.isLoading) &&
+                (now - lastBufferProgressRealtimeMs < 10_000L || bufferedPos > 0)
+            if (isBufferingProgressing && elapsed < 45_000L) {
+                noFirstFrameClockStart = now
+            }
+
+            val noFirstFrame = !renderedFirstFrame && player.playWhenReady && (now - noFirstFrameClockStart >= baseTimeout)
+
+            // Video frame stall: require 8s without frame advancement while position is also stalled, not loading, and supposed to be playing
             val frameStalled = renderedFirstFrame && player.playbackState == Player.STATE_READY && activelyPlaying &&
+                !player.isLoading &&
                 now >= frameStallGraceUntilMs &&
-                lastFrameAdvanceRealtimeMs > 0 && now - lastFrameAdvanceRealtimeMs >= 3_000L &&
-                player.currentPosition > 1_500L
+                lastFrameAdvanceRealtimeMs > 0 && (now - lastFrameAdvanceRealtimeMs >= 8_000L) &&
+                (now - lastPositionAdvanceRealtimeMs >= 8_000L) &&
+                currentPos > 1_500L
+
             if (!noFirstFrame && !frameStalled) continue
+
+            // If player actually started playing or rendered first frame in the meantime, ignore!
+            if (renderedFirstFrame || player.isPlaying || (player.playbackState == Player.STATE_READY && currentPos > 0)) {
+                if (error != null) error = null
+                continue
+            }
 
             val reason = if (noFirstFrame) "noFirstFrame" else "videoFrameStall"
             recoveryInProgress = true
-            diagnostics.log("PlayerWatchdog", "$reason item=${descriptor.item.id} attempt=$recoveryAttempt elapsedMs=$elapsed state=${player.playbackState} requestedMs=${descriptor.initialPositionMs} currentMs=${player.currentPosition} bufferedMs=${player.bufferedPosition} loading=${player.isLoading} firstFrame=$renderedFirstFrame frameCount=$frameCount lastFrameAgeMs=${if (lastFrameAdvanceRealtimeMs>0) now-lastFrameAdvanceRealtimeMs else -1} safeResume=$safeResumeMode")
-            if (safeResumeMode && recoveryAttempt == 0) {
-                recoveryStartPositionMs = player.currentPosition.coerceAtLeast(0L)
+            diagnostics.log("PlayerWatchdog", "$reason item=${descriptor.item.id} attempt=$recoveryAttempt elapsedMs=$elapsed state=${player.playbackState} requestedMs=${descriptor.initialPositionMs} currentMs=$currentPos bufferedMs=$bufferedPos loading=${player.isLoading} firstFrame=$renderedFirstFrame frameCount=$frameCount lastFrameAgeMs=${if (lastFrameAdvanceRealtimeMs>0) now-lastFrameAdvanceRealtimeMs else -1} safeResume=$safeResumeMode")
+
+            val canLocalRetry = (safeResumeMode || (config.hardwareCompatibilityMode && isRockchip && isHevc)) && recoveryAttempt == 0
+            if (canLocalRetry) {
+                recoveryStartPositionMs = currentPos.coerceAtLeast(0L)
                 diagnostics.log("PlayerRetry", "local OMX retry item=${descriptor.item.id} fromAttempt=0 toAttempt=1 requestedMs=$recoveryStartPositionMs reason=$reason")
                 recoveryAttempt = 1
                 continue
             }
-            val recoverPosition = player.currentPosition.takeIf { it > 0L } ?: recoveryStartPositionMs
+            val recoverPosition = currentPos.takeIf { it > 0L } ?: recoveryStartPositionMs
             diagnostics.log("PlayerRetry", "terminal recovery item=${descriptor.item.id} attempt=$recoveryAttempt recoverPositionMs=$recoverPosition reason=$reason method=${descriptor.playMethod}")
             val recovered = onRecover(descriptor, recoverPosition)
             if (recovered != null) {
                 diagnostics.log("PlayerRetry", "terminal recovery success item=${descriptor.item.id} newMethod=${recovered.playMethod} newUrl=${recovered.streamUrl.substringBefore('?')}")
                 error = null
             } else {
-                diagnostics.log("PlayerRetry", "terminal recovery failed item=${descriptor.item.id}")
-                error = "播放遇到问题，请稍后重试"
+                // If player is actually playing or ready, suppress error popup!
+                if (renderedFirstFrame || player.isPlaying || player.playbackState == Player.STATE_READY) {
+                    diagnostics.log("PlayerRetry", "terminal recovery returned null but player is already playing or ready - suppressing error popup")
+                    error = null
+                } else {
+                    diagnostics.log("PlayerRetry", "terminal recovery failed item=${descriptor.item.id}")
+                    error = "播放遇到问题，请稍后重试"
+                }
             }
             break
-        }
-    }
-
-    fun exit() {
-        val player = controller
-        if (!stopped && player != null) {
-            stopped = true
-            scope.launch {
-                onStopped(descriptor, player.currentPosition, player.duration.takeIf { it > 0 && it != C.TIME_UNSET })
-                player.pause()
-                onExit()
-            }
-        } else onExit()
-    }
-
-    fun switchTo(item: EmbyItem) {
-        val player = controller
-        if (player == null) {
-            onPlayAdjacent(item)
-            return
-        }
-        scope.launch {
-            if (!stopped) {
-                stopped = true
-                onStopped(descriptor, player.currentPosition, player.duration.takeIf { it > 0 && it != C.TIME_UNSET })
-            }
-            player.pause()
-            onPlayAdjacent(item)
         }
     }
 
@@ -461,10 +551,25 @@ fun PlayerScreen(
         markPlayerInteraction()
     }
 
+    LaunchedEffect(ended) {
+        if (ended) {
+            delay(150)
+            runCatching { endedFocusRequester.requestFocus() }
+        }
+    }
+
     BackHandler {
         when {
             settingsVisible -> settingsVisible = false
             locked -> { locked = false; markPlayerInteraction() }
+            ended -> {
+                if (autoNextCountdown > 0 && !autoNextCancelled) {
+                    autoNextCancelled = true
+                    autoNextCountdown = 0
+                } else {
+                    exit()
+                }
+            }
             controlsVisible -> controlsVisible = false
             else -> exit()
         }
@@ -872,7 +977,40 @@ fun PlayerScreen(
             }
         }
 
-        error?.let { message ->
+        if (ended) {
+            PlaybackEndedCard(
+                item = descriptor.item,
+                nextItem = nextItem,
+                countdown = autoNextCountdown,
+                countdownActive = autoNextCountdown > 0 && !autoNextCancelled,
+                focusRequester = endedFocusRequester,
+                onPlayNext = {
+                    autoNextCancelled = true
+                    autoNextCountdown = 0
+                    nextItem?.let(::switchTo)
+                },
+                onCancelAutoPlay = {
+                    autoNextCancelled = true
+                    autoNextCountdown = 0
+                },
+                onReplay = {
+                    autoNextCancelled = true
+                    autoNextCountdown = 0
+                    val p = controller
+                    if (p != null) {
+                        ended = false
+                        stopped = false
+                        p.seekTo(0L)
+                        p.prepare()
+                        p.play()
+                    }
+                },
+                onExit = ::exit,
+                modifier = Modifier.align(Alignment.Center),
+            )
+        }
+
+        if (error != null && !renderedFirstFrame && !playerIsPlaying && controller?.isPlaying != true) {
             Card(Modifier.align(Alignment.Center).padding(24.dp), shape = RoundedCornerShape(24.dp)) {
                 Column(Modifier.widthIn(max = 420.dp).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -880,7 +1018,7 @@ fun PlayerScreen(
                         Spacer(Modifier.width(10.dp))
                         Text("播放遇到问题", style = MaterialTheme.typography.titleLarge)
                     }
-                    Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(error.orEmpty(), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = { error = null; controller?.prepare(); controller?.play() }) { Text("重试") }
                         TextButton(onClick = ::exit) { Text("返回详情") }
@@ -1540,4 +1678,119 @@ private fun time(ms: Long): String {
     val m = (total % 3600) / 60
     val s = total % 60
     return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s)
+}
+
+@Composable
+fun PlaybackEndedCard(
+    item: EmbyItem,
+    nextItem: EmbyItem?,
+    countdown: Int,
+    countdownActive: Boolean,
+    focusRequester: FocusRequester,
+    onPlayNext: () -> Unit,
+    onCancelAutoPlay: () -> Unit,
+    onReplay: () -> Unit,
+    onExit: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.padding(24.dp),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)),
+    ) {
+        Column(
+            modifier = Modifier
+                .widthIn(max = 480.dp)
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            if (nextItem != null && countdownActive) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.SkipNext, null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "即将播放下一集 (${countdown}s)",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                Text(
+                    text = nextItem.name,
+                    style = MaterialTheme.typography.bodyLarge,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Button(
+                        onClick = onPlayNext,
+                        modifier = Modifier.focusRequester(focusRequester),
+                    ) {
+                        Icon(Icons.Default.PlayArrow, null)
+                        Spacer(Modifier.width(4.dp))
+                        Text("立即播放")
+                    }
+                    OutlinedButton(onClick = onCancelAutoPlay) {
+                        Text("取消自动播放")
+                    }
+                    TextButton(onClick = onExit) {
+                        Text("返回详情")
+                    }
+                }
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        if (nextItem != null) Icons.Default.CheckCircle else Icons.Default.DoneAll,
+                        null,
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = if (nextItem != null) "本集播放完毕" else "播放完毕",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                Text(
+                    text = item.name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (nextItem != null) {
+                        Button(
+                            onClick = onPlayNext,
+                            modifier = Modifier.focusRequester(focusRequester),
+                        ) {
+                            Icon(Icons.Default.SkipNext, null)
+                            Spacer(Modifier.width(4.dp))
+                            Text("下一集")
+                        }
+                    }
+                    OutlinedButton(
+                        onClick = onReplay,
+                        modifier = if (nextItem == null) Modifier.focusRequester(focusRequester) else Modifier,
+                    ) {
+                        Icon(Icons.Default.Replay, null)
+                        Spacer(Modifier.width(4.dp))
+                        Text("重播")
+                    }
+                    TextButton(onClick = onExit) {
+                        Text("返回详情")
+                    }
+                }
+            }
+        }
+    }
 }

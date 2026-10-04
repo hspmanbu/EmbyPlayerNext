@@ -57,6 +57,7 @@ fun EmbyApp(vm: EmbyViewModel = viewModel()) {
     val loading by vm.loading.collectAsState()
     val message by vm.message.collectAsState()
     val dynamicPortStatus by vm.dynamicPortStatus.collectAsState()
+    val episodeQueue by vm.episodePlaybackQueue.collectAsState()
 
     var loginVisible by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
@@ -244,11 +245,13 @@ fun EmbyApp(vm: EmbyViewModel = viewModel()) {
                                 }
 
                                 AppScreen.PLAYER -> playback?.let { descriptor ->
+                                    val previousItem = remember(episodeQueue, descriptor.item.id) { vm.previousPlaybackItem(descriptor.item.id) }
+                                    val nextItem = remember(episodeQueue, descriptor.item.id) { vm.nextPlaybackItem(descriptor.item.id) }
                                     PlayerScreen(
                                         descriptor = descriptor,
                                         config = config,
-                                        previousItem = vm.previousPlaybackItem(descriptor.item.id),
-                                        nextItem = vm.nextPlaybackItem(descriptor.item.id),
+                                        previousItem = previousItem,
+                                        nextItem = nextItem,
                                         onStart = vm::reportStart,
                                         onProgress = vm::reportProgress,
                                         onStopped = vm::reportStopped,
