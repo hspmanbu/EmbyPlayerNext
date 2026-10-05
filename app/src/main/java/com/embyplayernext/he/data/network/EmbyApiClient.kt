@@ -41,7 +41,7 @@ class EmbyApiClient(
             val c = config()
             val req = requestFactory()
             logger.log("HTTP", "${req.method} ${req.url}")
-            return NetworkSupport.client(c, if (c.dynamicPortEnabled) c.dynamicPortTimeoutSeconds else 20).newCall(req).execute().use { r ->
+            return NetworkSupport.apiClient(c, if (c.dynamicPortEnabled) c.dynamicPortTimeoutSeconds else 20).newCall(req).execute().use { r ->
                 val body = r.body?.string().orEmpty()
                 logger.log("HTTP", "${r.code} ${req.url.encodedPath} ${body.take(800)}")
                 if (!r.isSuccessful) throw HttpStatusException(r.code, body)
@@ -53,7 +53,7 @@ class EmbyApiClient(
         } catch (first: Throwable) {
             val c = config()
             val retryable = first is IOException || first is SocketTimeoutException || (first is HttpStatusException && first.code in setOf(502, 503, 504))
-            val eligible = c.dynamicPortEnabled && c.dynamicPortTargetDomain.isNotBlank() && c.serverUrl.contains(c.dynamicPortTargetDomain, true)
+            val eligible = c.dynamicPortEnabled && (c.dynamicPortTargetDomain.isBlank() || c.serverUrl.contains(c.dynamicPortTargetDomain, true))
             if (!retryable || !eligible) throw first
             logger.log("DynamicPort", "request failed: ${first.message}; resolving...")
             dynamicResolver.resolveAndSwitch().getOrThrow()
@@ -64,7 +64,7 @@ class EmbyApiClient(
     private suspend fun executeDirect(candidate: EmbyServerConfig, requestFactory: () -> Request): String = withContext(Dispatchers.IO) {
         val req = requestFactory()
         logger.log("HTTP", "${req.method} ${req.url}")
-        NetworkSupport.client(candidate, if (candidate.dynamicPortEnabled) candidate.dynamicPortTimeoutSeconds else 20)
+        NetworkSupport.apiClient(candidate, if (candidate.dynamicPortEnabled) candidate.dynamicPortTimeoutSeconds else 20)
             .newCall(req).execute().use { r ->
                 val body = r.body?.string().orEmpty()
                 logger.log("HTTP", "${r.code} ${req.url.encodedPath} ${body.take(800)}")
@@ -435,6 +435,29 @@ class EmbyApiClient(
             .addQueryParameter("maxWidth", width.toString()).addQueryParameter("quality", "90").addQueryParameter("tag", tag)
         if (config().accessToken.isNotBlank()) b.addQueryParameter("api_key", config().accessToken)
         return b.build().toString()
+    }
+
+    fun seriesImageUrl(item: EmbyItem, type: String = "Backdrop", width: Int = 800): String? {
+        if (item.seriesId.isNullOrBlank()) return imageUrl(item, type, width)
+        val sId = item.seriesId
+        if (type == "Backdrop") {
+            val tag = item.parentBackdropImageTag ?: item.backdropImageTag
+            val targetId = item.parentBackdropItemId ?: sId
+            if (tag != null) {
+                val b = "${base()}/Items/$targetId/Images/Backdrop".toHttpUrlOrNull()!!.newBuilder()
+                    .addQueryParameter("maxWidth", width.toString()).addQueryParameter("quality", "90").addQueryParameter("tag", tag)
+                if (config().accessToken.isNotBlank()) b.addQueryParameter("api_key", config().accessToken)
+                return b.build().toString()
+            }
+        }
+        val pTag = item.seriesPrimaryImageTag ?: item.primaryImageTag
+        if (pTag != null) {
+            val b = "${base()}/Items/$sId/Images/Primary".toHttpUrlOrNull()!!.newBuilder()
+                .addQueryParameter("maxWidth", width.toString()).addQueryParameter("quality", "90").addQueryParameter("tag", pTag)
+            if (config().accessToken.isNotBlank()) b.addQueryParameter("api_key", config().accessToken)
+            return b.build().toString()
+        }
+        return imageUrl(item, type, width)
     }
 
     private fun parsePlaybackInfo(root: JSONObject): PlaybackInfo {

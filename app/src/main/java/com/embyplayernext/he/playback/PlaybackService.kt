@@ -119,7 +119,7 @@ class PlaybackService : MediaSessionService() {
             )
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
-        val upstream = OkHttpDataSource.Factory(NetworkSupport.client(config, if (config.dynamicPortEnabled) config.dynamicPortTimeoutSeconds else 20))
+        val upstream = OkHttpDataSource.Factory(NetworkSupport.mediaClient(config, if (config.dynamicPortEnabled) config.dynamicPortTimeoutSeconds else 15))
             .setUserAgent("EmbyPlayerNext/2.3.27")
         val cacheFactory = if (config.cacheMb > 0) {
             CacheDataSource.Factory()

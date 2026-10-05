@@ -12,20 +12,49 @@ import javax.net.ssl.X509TrustManager
 
 object NetworkSupport {
     private val clients = ConcurrentHashMap<String, OkHttpClient>()
+    private val mediaClients = ConcurrentHashMap<String, OkHttpClient>()
 
     fun client(config: EmbyServerConfig, timeoutSeconds: Int = 20): OkHttpClient {
-        val timeout = timeoutSeconds.coerceIn(2, 120)
-        val key = "$timeout:${config.allowInsecureHttps}"
-        return clients.getOrPut(key) { buildClient(config, timeout) }
+        return apiClient(config, timeoutSeconds)
     }
 
-    private fun buildClient(config: EmbyServerConfig, timeoutSeconds: Int): OkHttpClient {
+    fun apiClient(config: EmbyServerConfig, timeoutSeconds: Int = 20): OkHttpClient {
+        val timeout = timeoutSeconds.coerceIn(2, 120)
+        val key = "api:$timeout:${config.allowInsecureHttps}"
+        return clients.getOrPut(key) { buildApiClient(config, timeout) }
+    }
+
+    fun mediaClient(config: EmbyServerConfig, connectTimeoutSeconds: Int = 15): OkHttpClient {
+        val timeout = connectTimeoutSeconds.coerceIn(2, 60)
+        val key = "media:$timeout:${config.allowInsecureHttps}"
+        return mediaClients.getOrPut(key) { buildMediaClient(config, timeout) }
+    }
+
+    private fun buildApiClient(config: EmbyServerConfig, timeoutSeconds: Int): OkHttpClient {
         val b = OkHttpClient.Builder()
             .connectTimeout(timeoutSeconds.toLong(), TimeUnit.SECONDS)
-            .readTimeout(45, TimeUnit.SECONDS)
-            .writeTimeout(45, TimeUnit.SECONDS)
+            .readTimeout(timeoutSeconds.toLong(), TimeUnit.SECONDS)
+            .writeTimeout(timeoutSeconds.toLong(), TimeUnit.SECONDS)
+            .callTimeout(timeoutSeconds.toLong(), TimeUnit.SECONDS)
+            .retryOnConnectionFailure(false)
             .followRedirects(true)
             .followSslRedirects(true)
+        configureSsl(b, config)
+        return b.build()
+    }
+
+    private fun buildMediaClient(config: EmbyServerConfig, connectTimeoutSeconds: Int): OkHttpClient {
+        val b = OkHttpClient.Builder()
+            .connectTimeout(connectTimeoutSeconds.toLong(), TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .followRedirects(true)
+            .followSslRedirects(true)
+        configureSsl(b, config)
+        return b.build()
+    }
+
+    private fun configureSsl(b: OkHttpClient.Builder, config: EmbyServerConfig) {
         if (config.allowInsecureHttps) {
             val trust = object : X509TrustManager {
                 override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) = Unit
@@ -35,8 +64,10 @@ object NetworkSupport {
             val ssl = SSLContext.getInstance("TLS").apply { init(null, arrayOf<TrustManager>(trust), SecureRandom()) }
             b.sslSocketFactory(ssl.socketFactory, trust).hostnameVerifier { _, _ -> true }
         }
-        return b.build()
     }
 
-    fun clearCachedClients() { clients.clear() }
+    fun clearCachedClients() {
+        clients.clear()
+        mediaClients.clear()
+    }
 }

@@ -6,6 +6,8 @@ import android.content.pm.PackageManager
 import com.embyplayernext.he.data.model.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import org.json.JSONArray
+import org.json.JSONObject
 
 class AppPreferences(context: Context) {
     private val appContext = context.applicationContext
@@ -14,17 +16,41 @@ class AppPreferences(context: Context) {
     val config: StateFlow<EmbyServerConfig> = _config
 
     fun loadConfig(): EmbyServerConfig = runCatching {
+        val servers = getSavedServers()
+        val activeId = prefs.getString("active_server_id", null)
+        val activeServer = servers.firstOrNull { it.id == activeId } ?: servers.firstOrNull()
+
+        val legacyUrl = prefs.getString("server_url", "") ?: ""
+        val legacyToken = prefs.getString("access_token", "") ?: ""
+        val effectiveServer = activeServer ?: if (legacyUrl.isNotBlank() && legacyToken.isNotBlank()) {
+            val initial = SavedServerProfile(
+                serverUrl = legacyUrl,
+                username = prefs.getString("username", "") ?: "",
+                userId = prefs.getString("user_id", "") ?: "",
+                accessToken = legacyToken,
+                serverName = prefs.getString("server_name", "Emby Server") ?: "Emby Server",
+                dynamicPortEnabled = prefs.getBoolean("dynamic_port_enabled", false),
+                dynamicPortTargetDomain = prefs.getString("dynamic_port_domain", "") ?: "",
+                dynamicPortTimeoutSeconds = safeInt("dynamic_port_timeout", 5),
+                dynamicPortFetchUrl = prefs.getString("dynamic_port_fetch_url", "") ?: "",
+                dynamicPortServiceName = prefs.getString("dynamic_port_service_name", "") ?: "",
+                allowInsecureHttps = prefs.getBoolean("allow_insecure_https", false),
+            )
+            saveServerProfile(initial)
+            initial
+        } else null
+
         EmbyServerConfig(
-            serverUrl = prefs.getString("server_url", "") ?: "",
-            username = prefs.getString("username", "") ?: "",
-            userId = prefs.getString("user_id", "") ?: "",
-            accessToken = prefs.getString("access_token", "") ?: "",
-            serverName = prefs.getString("server_name", "Emby Server") ?: "Emby Server",
-            dynamicPortEnabled = prefs.getBoolean("dynamic_port_enabled", false),
-            dynamicPortTargetDomain = prefs.getString("dynamic_port_domain", "") ?: "",
-            dynamicPortTimeoutSeconds = safeInt("dynamic_port_timeout", 5),
-            dynamicPortFetchUrl = prefs.getString("dynamic_port_fetch_url", "") ?: "",
-            dynamicPortServiceName = prefs.getString("dynamic_port_service_name", "") ?: "",
+            serverUrl = effectiveServer?.serverUrl ?: legacyUrl,
+            username = effectiveServer?.username ?: (prefs.getString("username", "") ?: ""),
+            userId = effectiveServer?.userId ?: (prefs.getString("user_id", "") ?: ""),
+            accessToken = effectiveServer?.accessToken ?: legacyToken,
+            serverName = effectiveServer?.serverName ?: (prefs.getString("server_name", "Emby Server") ?: "Emby Server"),
+            dynamicPortEnabled = effectiveServer?.dynamicPortEnabled ?: prefs.getBoolean("dynamic_port_enabled", false),
+            dynamicPortTargetDomain = effectiveServer?.dynamicPortTargetDomain ?: (prefs.getString("dynamic_port_domain", "") ?: ""),
+            dynamicPortTimeoutSeconds = effectiveServer?.dynamicPortTimeoutSeconds ?: safeInt("dynamic_port_timeout", 5),
+            dynamicPortFetchUrl = effectiveServer?.dynamicPortFetchUrl ?: (prefs.getString("dynamic_port_fetch_url", "") ?: ""),
+            dynamicPortServiceName = effectiveServer?.dynamicPortServiceName ?: (prefs.getString("dynamic_port_service_name", "") ?: ""),
             uiScale = safeFloat("ui_scale", defaultUiScale()),
             hardwareDecoding = prefs.getBoolean("hardware_decoding", true),
             hardwareCompatibilityMode = prefs.getBoolean("hardware_compatibility_mode", false),
@@ -33,14 +59,12 @@ class AppPreferences(context: Context) {
             forwardSeconds = safeInt("forward_seconds", 30),
             cacheMb = safeInt("disk_cache_mb", 128),
             gestureSeekSeconds = safeInt("gesture_seek_seconds", 180),
-            allowInsecureHttps = prefs.getBoolean("allow_insecure_https", false),
+            allowInsecureHttps = effectiveServer?.allowInsecureHttps ?: prefs.getBoolean("allow_insecure_https", false),
             autoPlayNextEpisode = prefs.getBoolean("auto_play_next_episode", true),
         )
     }.getOrElse {
-        // Preserve startup even if an older build stored a key with a different primitive type.
         EmbyServerConfig(uiScale = defaultUiScale())
     }
-
 
     private fun defaultUiScale(): Float {
         val configuration = appContext.resources.configuration
@@ -55,6 +79,118 @@ class AppPreferences(context: Context) {
     }
     private fun safeFloat(key: String, default: Float): Float = try { prefs.getFloat(key, default) } catch (_: ClassCastException) {
         prefs.getString(key, null)?.toFloatOrNull() ?: default
+    }
+
+    fun getSavedServers(): List<SavedServerProfile> {
+        val raw = prefs.getString("saved_server_profiles", null) ?: return emptyList()
+        return runCatching {
+            val arr = JSONArray(raw)
+            (0 until arr.length()).mapNotNull { i ->
+                val o = arr.optJSONObject(i) ?: return@mapNotNull null
+                val url = o.optString("serverUrl")
+                if (url.isBlank()) return@mapNotNull null
+                SavedServerProfile(
+                    id = o.optString("id").ifBlank { java.util.UUID.randomUUID().toString() },
+                    serverUrl = url,
+                    serverName = o.optString("serverName", "Emby Server").ifBlank { "Emby Server" },
+                    username = o.optString("username"),
+                    userId = o.optString("userId"),
+                    accessToken = o.optString("accessToken"),
+                    lastConnected = o.optLong("lastConnected", 0L),
+                    dynamicPortEnabled = o.optBoolean("dynamicPortEnabled", false),
+                    dynamicPortTargetDomain = o.optString("dynamicPortTargetDomain"),
+                    dynamicPortTimeoutSeconds = o.optInt("dynamicPortTimeoutSeconds", 5).coerceIn(2, 60),
+                    dynamicPortFetchUrl = o.optString("dynamicPortFetchUrl"),
+                    dynamicPortServiceName = o.optString("dynamicPortServiceName"),
+                    allowInsecureHttps = o.optBoolean("allowInsecureHttps", false),
+                )
+            }.sortedByDescending { it.lastConnected }
+        }.getOrDefault(emptyList())
+    }
+
+    fun saveServerProfile(profile: SavedServerProfile) {
+        val current = getSavedServers().filterNot {
+            it.id == profile.id || (it.serverUrl.trimEnd('/') == profile.serverUrl.trimEnd('/') && it.username == profile.username)
+        }
+        val target = profile.copy(lastConnected = System.currentTimeMillis())
+        val updated = (listOf(target) + current).sortedByDescending { it.lastConnected }
+        val arr = JSONArray()
+        for (p in updated) {
+            arr.put(
+                JSONObject()
+                    .put("id", p.id)
+                    .put("serverUrl", p.serverUrl.trimEnd('/'))
+                    .put("serverName", p.serverName)
+                    .put("username", p.username)
+                    .put("userId", p.userId)
+                    .put("accessToken", p.accessToken)
+                    .put("lastConnected", p.lastConnected)
+                    .put("dynamicPortEnabled", p.dynamicPortEnabled)
+                    .put("dynamicPortTargetDomain", p.dynamicPortTargetDomain)
+                    .put("dynamicPortTimeoutSeconds", p.dynamicPortTimeoutSeconds)
+                    .put("dynamicPortFetchUrl", p.dynamicPortFetchUrl)
+                    .put("dynamicPortServiceName", p.dynamicPortServiceName)
+                    .put("allowInsecureHttps", p.allowInsecureHttps)
+            )
+        }
+        prefs.edit()
+            .putString("saved_server_profiles", arr.toString())
+            .putString("active_server_id", target.id)
+            .apply()
+    }
+
+    fun removeServerProfile(serverId: String) {
+        val current = getSavedServers().filterNot { it.id == serverId }
+        val arr = JSONArray()
+        for (p in current) {
+            arr.put(
+                JSONObject()
+                    .put("id", p.id)
+                    .put("serverUrl", p.serverUrl.trimEnd('/'))
+                    .put("serverName", p.serverName)
+                    .put("username", p.username)
+                    .put("userId", p.userId)
+                    .put("accessToken", p.accessToken)
+                    .put("lastConnected", p.lastConnected)
+                    .put("dynamicPortEnabled", p.dynamicPortEnabled)
+                    .put("dynamicPortTargetDomain", p.dynamicPortTargetDomain)
+                    .put("dynamicPortTimeoutSeconds", p.dynamicPortTimeoutSeconds)
+                    .put("dynamicPortFetchUrl", p.dynamicPortFetchUrl)
+                    .put("dynamicPortServiceName", p.dynamicPortServiceName)
+                    .put("allowInsecureHttps", p.allowInsecureHttps)
+            )
+        }
+        val editor = prefs.edit().putString("saved_server_profiles", arr.toString())
+        if (prefs.getString("active_server_id", "") == serverId) {
+            val next = current.firstOrNull()
+            if (next != null) {
+                editor.putString("active_server_id", next.id)
+            } else {
+                editor.remove("active_server_id")
+            }
+        }
+        editor.apply()
+    }
+
+    fun switchToServer(serverId: String): Boolean {
+        val target = getSavedServers().firstOrNull { it.id == serverId } ?: return false
+        saveServerProfile(target)
+        update {
+            it.copy(
+                serverUrl = target.serverUrl,
+                username = target.username,
+                userId = target.userId,
+                accessToken = target.accessToken,
+                serverName = target.serverName,
+                dynamicPortEnabled = target.dynamicPortEnabled,
+                dynamicPortTargetDomain = target.dynamicPortTargetDomain,
+                dynamicPortTimeoutSeconds = target.dynamicPortTimeoutSeconds,
+                dynamicPortFetchUrl = target.dynamicPortFetchUrl,
+                dynamicPortServiceName = target.dynamicPortServiceName,
+                allowInsecureHttps = target.allowInsecureHttps,
+            )
+        }
+        return true
     }
 
     fun update(transform: (EmbyServerConfig) -> EmbyServerConfig) {
@@ -81,11 +217,35 @@ class AppPreferences(context: Context) {
             .putBoolean("allow_insecure_https", c.allowInsecureHttps)
             .putBoolean("auto_play_next_episode", c.autoPlayNextEpisode)
             .apply()
+
+        if (c.serverUrl.isNotBlank() && c.accessToken.isNotBlank()) {
+            val activeId = prefs.getString("active_server_id", null)
+            val existing = getSavedServers().firstOrNull {
+                (activeId != null && it.id == activeId) ||
+                (it.serverUrl.trimEnd('/') == c.serverUrl.trimEnd('/') && it.username == c.username)
+            }
+            val profile = (existing ?: SavedServerProfile(serverUrl = c.serverUrl, username = c.username)).copy(
+                serverUrl = c.serverUrl,
+                serverName = c.serverName,
+                username = c.username,
+                userId = c.userId,
+                accessToken = c.accessToken,
+                lastConnected = System.currentTimeMillis(),
+                dynamicPortEnabled = c.dynamicPortEnabled,
+                dynamicPortTargetDomain = c.dynamicPortTargetDomain,
+                dynamicPortTimeoutSeconds = c.dynamicPortTimeoutSeconds,
+                dynamicPortFetchUrl = c.dynamicPortFetchUrl,
+                dynamicPortServiceName = c.dynamicPortServiceName,
+                allowInsecureHttps = c.allowInsecureHttps,
+            )
+            saveServerProfile(profile)
+        }
+
         _config.value = c
     }
 
     fun updateServerPort(serverUrl: String) = update { it.copy(serverUrl = serverUrl) }
-    fun clearLogin() = update { it.copy(userId = "", accessToken = "", username = "") }
+    fun clearLogin() = update { it.copy(userId = "", accessToken = "") }
 
     fun getRecentSearches(): List<String> = prefs.getString("recent_searches", "").orEmpty()
         .split('\u001F')

@@ -14,14 +14,19 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.embyplayernext.he.ui.components.tvScrollThenFocus
 import com.embyplayernext.he.data.model.EmbyServerConfig
+import com.embyplayernext.he.data.model.SavedServerProfile
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     config: EmbyServerConfig,
+    savedServers: List<SavedServerProfile> = emptyList(),
+    onSwitchServer: (SavedServerProfile) -> Unit = {},
+    onDeleteServer: (String) -> Unit = {},
     onUpdate: (EmbyServerConfig) -> Unit,
     onDynamic: () -> Unit,
     onLogin: () -> Unit,
@@ -53,32 +58,37 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             item {
-                SettingSection("账号与服务器", Icons.Default.Dns) {
+                SettingSection("服务器与多账号管理", Icons.Default.Dns) {
+                    if (savedServers.isNotEmpty()) {
+                        savedServers.forEach { server ->
+                            val isActive = server.serverUrl.trimEnd('/') == config.serverUrl.trimEnd('/') && server.username == config.username
+                            SettingServerItem(
+                                server = server,
+                                isActive = isActive,
+                                onSelect = { if (!isActive) onSwitchServer(server) },
+                                onDelete = { onDeleteServer(server.id) },
+                            )
+                            HorizontalDivider()
+                        }
+                    }
                     SettingRow(
-                        title = config.serverName.ifBlank { "Emby Server" },
-                        subtitle = config.serverUrl.ifBlank { "尚未配置服务器" },
-                        icon = Icons.Default.Storage,
-                        onClick = onLogin,
-                    )
-                    HorizontalDivider()
-                    SettingRow(
-                        title = if (config.accessToken.isBlank()) "登录服务器" else "切换服务器 / 重新登录",
-                        subtitle = config.username.ifBlank { "当前未登录" },
-                        icon = Icons.Default.Login,
+                        title = "添加 / 登录新服务器",
+                        subtitle = "支持登录多个 Emby 服务器账号并自由切换",
+                        icon = Icons.Default.AddCircleOutline,
                         onClick = onLogin,
                     )
                     HorizontalDivider()
                     SettingRow(
                         title = "动态端口",
-                        subtitle = if (config.dynamicPortEnabled) "已启用 · ${config.dynamicPortTargetDomain}" else "未启用",
+                        subtitle = if (config.dynamicPortEnabled) "已启用 · ${config.dynamicPortTargetDomain.ifBlank { "全部服务器" }}" else "未启用",
                         icon = Icons.Default.SettingsEthernet,
                         onClick = onDynamic,
                     )
                     if (config.accessToken.isNotBlank()) {
                         HorizontalDivider()
                         SettingRow(
-                            title = "退出登录",
-                            subtitle = "清除当前服务器登录信息",
+                            title = "退出当前登录",
+                            subtitle = "清除当前服务器登录会话",
                             icon = Icons.Default.Logout,
                             onClick = { logoutConfirm = true },
                         )
@@ -284,3 +294,54 @@ private fun IntChoice(
         }
     }
 }
+
+@Composable
+private fun SettingServerItem(
+    server: SavedServerProfile,
+    isActive: Boolean,
+    onSelect: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    ListItem(
+        headlineContent = {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(server.serverName, fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal)
+                if (isActive) {
+                    Surface(shape = RoundedCornerShape(4.dp), color = MaterialTheme.colorScheme.primary) {
+                        Text(
+                            "当前使用",
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        },
+        supportingContent = {
+            Text(
+                "${server.username.ifBlank { "未命名用户" }} · ${server.serverUrl}",
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        },
+        trailingContent = {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (!isActive && server.accessToken.isNotBlank()) {
+                    TextButton(onClick = onSelect) { Text("切换") }
+                }
+                IconButton(onClick = onDelete) {
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = "删除服务器",
+                        modifier = Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
+                    )
+                }
+            }
+        },
+        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        modifier = if (!isActive) Modifier.clickable(onClick = onSelect) else Modifier
+    )
+}
+

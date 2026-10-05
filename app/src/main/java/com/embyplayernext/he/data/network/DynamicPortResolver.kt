@@ -24,7 +24,7 @@ class DynamicPortResolver(
             require(c.dynamicPortServiceName.isNotBlank()) { "请填写服务名称" }
             logger.log("DynamicPort", "fetch=${c.dynamicPortFetchUrl}, service=${c.dynamicPortServiceName}")
             val req = Request.Builder().url(c.dynamicPortFetchUrl).header("User-Agent", "Mozilla/5.0 Android EmbyPlayer/2.0").build()
-            val client = NetworkSupport.client(c, c.dynamicPortTimeoutSeconds.coerceAtLeast(2))
+            val client = NetworkSupport.apiClient(c, c.dynamicPortTimeoutSeconds.coerceAtLeast(2))
             val text = client.newCall(req).execute().use { r ->
                 if (!r.isSuccessful) error("端口页面 HTTP ${r.code}")
                 r.body?.string().orEmpty()

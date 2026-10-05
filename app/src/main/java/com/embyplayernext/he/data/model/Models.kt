@@ -23,6 +23,22 @@ data class EmbyServerConfig(
     val autoPlayNextEpisode: Boolean = true,
 )
 
+data class SavedServerProfile(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val serverUrl: String,
+    val serverName: String = "Emby Server",
+    val username: String = "",
+    val userId: String = "",
+    val accessToken: String = "",
+    val lastConnected: Long = System.currentTimeMillis(),
+    val dynamicPortEnabled: Boolean = false,
+    val dynamicPortTargetDomain: String = "",
+    val dynamicPortTimeoutSeconds: Int = 5,
+    val dynamicPortFetchUrl: String = "",
+    val dynamicPortServiceName: String = "",
+    val allowInsecureHttps: Boolean = false,
+)
+
 data class UserDataItem(
     val playbackPositionTicks: Long = 0L,
     val played: Boolean = false,

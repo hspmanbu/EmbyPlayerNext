@@ -32,8 +32,10 @@ fun HomeScreen(
     recentPlayed: List<EmbyItem>,
     latest: List<EmbyItem>,
     favorites: List<EmbyItem>,
+    savedServers: List<SavedServerProfile> = emptyList(),
     loading: Boolean,
     imageFor: (EmbyItem, String) -> String?,
+    seriesImageFor: ((EmbyItem, String) -> String?)? = null,
     viewImageFor: (EmbyView) -> String?,
     onOpenItem: (EmbyItem) -> Unit,
     onResumeItem: (EmbyItem) -> Unit,
@@ -42,6 +44,7 @@ fun HomeScreen(
     onSearch: () -> Unit,
     onRefresh: () -> Unit,
     onLogin: () -> Unit,
+    onSwitchServer: (SavedServerProfile) -> Unit = {},
 ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wide = maxWidth >= 840.dp
@@ -111,28 +114,72 @@ fun HomeScreen(
 
             if (config.accessToken.isBlank()) {
                 item {
-                    ElevatedCard(shape = RoundedCornerShape(26.dp)) {
-                        Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Icon(Icons.Default.CloudOff, null, Modifier.size(44.dp), tint = MaterialTheme.colorScheme.primary)
-                            Text("连接你的 Emby 服务器", style = MaterialTheme.typography.headlineMedium)
-                            Text("登录后可浏览全部媒体库、继续观看、收藏、搜索并使用完整播放器。", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Button(onClick = onLogin) {
-                                Icon(Icons.Default.Login, null)
-                                Spacer(Modifier.width(8.dp))
-                                Text("登录服务器")
+                    if (savedServers.isNotEmpty()) {
+                        ElevatedCard(shape = RoundedCornerShape(26.dp), modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Icon(Icons.Default.Dns, null, Modifier.size(36.dp), tint = MaterialTheme.colorScheme.primary)
+                                    Column {
+                                        Text("选择 Emby 服务器", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                                        Text("已保存的服务器账号，点击一键连接", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    savedServers.forEach { server ->
+                                        Surface(
+                                            shape = RoundedCornerShape(14.dp),
+                                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                            modifier = Modifier.fillMaxWidth().clickable { onSwitchServer(server) }
+                                        ) {
+                                            Row(
+                                                Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(Icons.Default.Storage, null, tint = MaterialTheme.colorScheme.primary)
+                                                Spacer(Modifier.width(12.dp))
+                                                Column(Modifier.weight(1f)) {
+                                                    Text(server.serverName, fontWeight = FontWeight.SemiBold)
+                                                    Text("${server.username.ifBlank { "未命名用户" }} · ${server.serverUrl}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                }
+                                                Button(onClick = { onSwitchServer(server) }) {
+                                                    Text("一键连接")
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                OutlinedButton(onClick = onLogin, modifier = Modifier.fillMaxWidth()) {
+                                    Icon(Icons.Default.Add, null)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("登录新服务器")
+                                }
+                            }
+                        }
+                    } else {
+                        ElevatedCard(shape = RoundedCornerShape(26.dp)) {
+                            Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Icon(Icons.Default.CloudOff, null, Modifier.size(44.dp), tint = MaterialTheme.colorScheme.primary)
+                                Text("连接你的 Emby 服务器", style = MaterialTheme.typography.headlineMedium)
+                                Text("登录后可浏览全部媒体库、继续观看、收藏、搜索并使用完整播放器。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Button(onClick = onLogin) {
+                                    Icon(Icons.Default.Login, null)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("登录服务器")
+                                }
                             }
                         }
                     }
                 }
             } else {
                 if (resume.isNotEmpty()) {
-                    item { SectionTitle("继续观看", "${resume.size} 个有播放进度内容") }
+                    item { SectionTitle("继续观看", "${resume.size} 个正在观看内容") }
                     item {
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(end = 6.dp)) {
                             items(resume, key = { it.id }) { item ->
                                 ResumeCard(
                                     item = item,
-                                    imageUrl = imageFor(item, "Backdrop") ?: imageFor(item, "Primary"),
+                                    imageUrl = (if (item.type == "Episode") seriesImageFor?.invoke(item, "Backdrop") else null)
+                                        ?: imageFor(item, "Backdrop") ?: imageFor(item, "Primary"),
                                     onClick = { onOpenItem(item) },
                                     onResume = { onResumeItem(item) },
                                     modifier = Modifier.width(resumeWidth),

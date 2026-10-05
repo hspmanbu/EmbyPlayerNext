@@ -245,11 +245,26 @@ fun ResumeCard(
                 Modifier.align(Alignment.BottomStart).padding(horizontal = 14.dp, vertical = 13.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text(item.name, maxLines = 1, overflow = TextOverflow.Ellipsis, color = Color.White, fontWeight = FontWeight.Bold)
+                val displayTitle = if (item.type == "Episode" && !item.seriesName.isNullOrBlank()) item.seriesName else item.name
+                val displaySubtitle = if (item.type == "Episode") {
+                    val epTag = listOfNotNull(
+                        item.parentIndexNumber?.let { "S$it" },
+                        item.indexNumber?.let { "E$it" },
+                    ).joinToString(" · ")
+                    val epName = item.name.takeIf { it.isNotBlank() && it != item.seriesName }
+                    val epPrefix = listOfNotNull(epTag.takeIf { it.isNotBlank() }, epName).joinToString(" ")
+                    val pText = resumeLabel(item)
+                    listOfNotNull(epPrefix.takeIf { it.isNotBlank() }, pText).joinToString(" · ")
+                } else {
+                    resumeLabel(item)
+                }
+                Text(displayTitle, maxLines = 1, overflow = TextOverflow.Ellipsis, color = Color.White, fontWeight = FontWeight.Bold)
                 Text(
-                    resumeLabel(item),
+                    displaySubtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color.White.copy(alpha = .82f)
+                    color = Color.White.copy(alpha = .85f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
             Surface(
@@ -591,9 +606,16 @@ private fun progress(item: EmbyItem): Float = (
     ).coerceIn(0f, 1f)
 
 private fun resumeLabel(item: EmbyItem): String {
-    val current = item.resumePositionMs / 60_000
-    val total = item.durationMs / 60_000
-    return if (total > 0) "${current} / ${total} 分钟" else "从 ${current} 分钟继续"
+    val sec = (item.resumePositionMs / 1000L).coerceAtLeast(0)
+    val totalMin = item.durationMs / 60_000
+    if (sec in 1..59) {
+        return if (totalMin > 0) "已看 ${sec}秒 / ${totalMin}分钟" else "已看 ${sec}秒"
+    }
+    val currentMin = sec / 60
+    if (currentMin > 0) {
+        return if (totalMin > 0) "${currentMin} / ${totalMin} 分钟" else "从 ${currentMin} 分钟继续"
+    }
+    return if (totalMin > 0) "继续观看 · ${totalMin}分钟" else "继续观看"
 }
 
 private fun formatDuration(ms: Long): String {

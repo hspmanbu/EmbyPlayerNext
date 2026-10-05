@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.util.concurrent.ConcurrentHashMap
 
 enum class AppScreen { HOME, LIBRARIES, SEARCH, LIBRARY, DETAIL, SETTINGS, DYNAMIC_PORT, PLAYER }
 sealed interface DynamicPortStatus {
@@ -34,8 +35,11 @@ class EmbyViewModel(app: Application) : AndroidViewModel(app) {
     private val prefs = AppPreferences(app)
     private val logger = DiagnosticsLogger(app)
     private val api = EmbyApiClient(app, prefs, logger)
+    private val localRecentPlayed = ConcurrentHashMap<String, EmbyItem>()
 
     val config: StateFlow<EmbyServerConfig> = prefs.config
+    private val _savedServers = MutableStateFlow<List<SavedServerProfile>>(prefs.getSavedServers())
+    val savedServers: StateFlow<List<SavedServerProfile>> = _savedServers.asStateFlow()
     private val _screen = MutableStateFlow(AppScreen.HOME); val screen = _screen.asStateFlow()
     private val _views = MutableStateFlow<List<EmbyView>>(emptyList()); val views = _views.asStateFlow()
     private val _resumeItems = MutableStateFlow<List<EmbyItem>>(emptyList()); val resumeItems = _resumeItems.asStateFlow()
@@ -115,8 +119,31 @@ class EmbyViewModel(app: Application) : AndroidViewModel(app) {
     fun openSettings() { _screen.value = AppScreen.SETTINGS }
     fun openDynamicPort() { _screen.value = AppScreen.DYNAMIC_PORT }
 
+    fun refreshSavedServers() {
+        _savedServers.value = prefs.getSavedServers()
+    }
+
+    fun switchServer(profile: SavedServerProfile) {
+        if (prefs.switchToServer(profile.id)) {
+            NetworkSupport.clearCachedClients()
+            refreshSavedServers()
+            clearHomeContent()
+            _message.value = "✓ 已切换至 ${profile.serverName} (${profile.username})"
+            if (profile.accessToken.isNotBlank()) {
+                _screen.value = AppScreen.HOME
+                loadHome()
+            }
+        }
+    }
+
+    fun removeServer(serverId: String) {
+        prefs.removeServerProfile(serverId)
+        refreshSavedServers()
+    }
+
     fun login(server: String, username: String, password: String, done: (Boolean) -> Unit = {}) = launchBusy {
         api.login(server, username, password).onSuccess {
+            refreshSavedServers()
             clearHomeContent()
             _message.value = "✓ 已连接 ${it.serverName}"
             _screen.value = AppScreen.HOME
@@ -134,6 +161,7 @@ class EmbyViewModel(app: Application) : AndroidViewModel(app) {
 
     fun logout() {
         prefs.clearLogin()
+        refreshSavedServers()
         _views.value = emptyList()
         _resumeItems.value = emptyList()
         _nextUpItems.value = emptyList()
@@ -172,8 +200,47 @@ class EmbyViewModel(app: Application) : AndroidViewModel(app) {
             val recentResult = recentRequest.await()
             recentResult.onSuccess { _recentPlayedItems.value = it }
             resumeResult.onSuccess { serverResume ->
-                val progressFromRecent = recentResult.getOrNull().orEmpty().filter { it.hasResumePosition }
-                _resumeItems.value = (serverResume + progressFromRecent).distinctBy(EmbyItem::id).take(24)
+                val recentPlayed = recentResult.getOrNull().orEmpty()
+                val localItems = localRecentPlayed.values.toList()
+
+                val allCandidates = mutableListOf<EmbyItem>()
+                allCandidates.addAll(localItems)
+                allCandidates.addAll(serverResume)
+                allCandidates.addAll(recentPlayed.filter { !it.isPlayed })
+
+                val mergedCandidates = allCandidates.map { item ->
+                    val local = localRecentPlayed[item.id]
+                    if (local != null && local.userData.playbackPositionTicks > item.userData.playbackPositionTicks) {
+                        item.copy(
+                            userData = item.userData.copy(
+                                playbackPositionTicks = local.userData.playbackPositionTicks,
+                                played = local.userData.played,
+                                playedPercentage = local.userData.playedPercentage ?: item.userData.playedPercentage,
+                                lastPlayedDate = local.userData.lastPlayedDate ?: item.userData.lastPlayedDate,
+                            )
+                        )
+                    } else item
+                }.filter { !it.isPlayed }
+
+                val (episodes, others) = mergedCandidates.partition { it.type == "Episode" || !it.seriesId.isNullOrBlank() }
+
+                val seriesEpisodes = episodes.groupBy { it.seriesId ?: it.name }
+                    .values
+                    .mapNotNull { epList ->
+                        epList.maxWithOrNull(
+                            compareBy<EmbyItem> { it.userData.lastPlayedDate ?: "" }
+                                .thenBy { it.userData.playbackPositionTicks }
+                                .thenBy { it.indexNumber ?: 0 }
+                        )
+                    }
+
+                val distinctOthers = others.distinctBy { it.id }
+
+                val finalResume = (seriesEpisodes + distinctOthers)
+                    .sortedByDescending { it.userData.lastPlayedDate ?: "" }
+                    .take(24)
+
+                _resumeItems.value = finalResume
             }
             latestRequest.await().onSuccess { _latestItems.value = it }
             favoriteRequest.await().onSuccess { _favoriteItems.value = it }
@@ -604,15 +671,38 @@ class EmbyViewModel(app: Application) : AndroidViewModel(app) {
         loadHome()
     }
 
+    private fun updateLocalPlayback(item: EmbyItem, positionMs: Long, durationMs: Long?) {
+        val ticks = positionMs.coerceAtLeast(0) * 10_000L
+        val dur = durationMs?.takeIf { it > 0 } ?: item.durationMs
+        val isPlayed = if (dur > 0) (positionMs.toDouble() / dur) >= 0.92 else false
+        val pct = if (dur > 0) (positionMs * 100.0 / dur).coerceIn(0.0, 100.0) else null
+        val now = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }.format(java.util.Date())
+
+        val updated = item.copy(
+            userData = item.userData.copy(
+                playbackPositionTicks = ticks,
+                played = isPlayed,
+                playedPercentage = pct,
+                lastPlayedDate = now,
+            )
+        )
+        localRecentPlayed[item.id] = updated
+    }
+
     suspend fun reportStart(d: PlaybackDescriptor, position: Long, duration: Long?) {
+        updateLocalPlayback(d.item, position, duration)
         runCatching { api.reportPlaybackStart(d, position, duration) }.onFailure { logger.log("Playback", "start error ${it.message}") }
     }
 
     suspend fun reportProgress(d: PlaybackDescriptor, position: Long, duration: Long?, paused: Boolean, event: String) {
+        updateLocalPlayback(d.item, position, duration)
         runCatching { api.reportPlaybackProgress(d, position, duration, paused, event) }.onFailure { logger.log("Playback", "progress error ${it.message}") }
     }
 
     suspend fun reportStopped(d: PlaybackDescriptor, position: Long, duration: Long?) {
+        updateLocalPlayback(d.item, position, duration)
         runCatching { api.reportPlaybackStopped(d, position, duration) }.onFailure { logger.log("Playback", "stop error ${it.message}") }
     }
 
@@ -698,6 +788,7 @@ class EmbyViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
     fun imageUrl(item: EmbyItem, type: String = "Primary", width: Int = 600) = api.imageUrl(item, type, width)
+    fun seriesImageUrl(item: EmbyItem, type: String = "Backdrop", width: Int = 800) = api.seriesImageUrl(item, type, width)
     fun imageUrl(view: EmbyView, width: Int = 900) = api.imageUrl(view, width)
     fun imageUrl(person: EmbyPerson, width: Int = 360) = api.imageUrl(person, width)
     fun exportDiagnostics() {

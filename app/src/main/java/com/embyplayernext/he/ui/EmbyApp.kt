@@ -23,6 +23,7 @@ import com.embyplayernext.he.ui.screens.*
 fun EmbyApp(vm: EmbyViewModel = viewModel()) {
     val context = LocalContext.current
     val config by vm.config.collectAsState()
+    val savedServers by vm.savedServers.collectAsState()
     val screen by vm.screen.collectAsState()
     val views by vm.views.collectAsState()
     val resume by vm.resumeItems.collectAsState()
@@ -125,8 +126,10 @@ fun EmbyApp(vm: EmbyViewModel = viewModel()) {
                                     recentPlayed = recentPlayed,
                                     latest = latest,
                                     favorites = favorites,
+                                    savedServers = savedServers,
                                     loading = loading,
                                     imageFor = { item, type -> vm.imageUrl(item, type, 1000) },
+                                    seriesImageFor = { item, type -> vm.seriesImageUrl(item, type, 1000) },
                                     viewImageFor = { view -> vm.imageUrl(view, 1000) },
                                     onOpenItem = vm::openItem,
                                     onResumeItem = { vm.play(it, resume = true) },
@@ -135,6 +138,7 @@ fun EmbyApp(vm: EmbyViewModel = viewModel()) {
                                     onSearch = vm::openSearch,
                                     onRefresh = vm::loadHome,
                                     onLogin = { loginVisible = true },
+                                    onSwitchServer = vm::switchServer,
                                 )
 
                                 AppScreen.LIBRARIES -> LibrariesScreen(
@@ -223,6 +227,9 @@ fun EmbyApp(vm: EmbyViewModel = viewModel()) {
                                     BackHandler { vm.goHome() }
                                     SettingsScreen(
                                         config = config,
+                                        savedServers = savedServers,
+                                        onSwitchServer = vm::switchServer,
+                                        onDeleteServer = vm::removeServer,
                                         onUpdate = { next -> vm.updateConfig { next } },
                                         onDynamic = vm::openDynamicPort,
                                         onLogin = { loginVisible = true },
@@ -270,10 +277,16 @@ fun EmbyApp(vm: EmbyViewModel = viewModel()) {
 
     if (loginVisible) {
         LoginDialog(
-            config,
-            { loginVisible = false },
-            { server, user, pass -> vm.login(server, user, pass) { ok -> if (ok) loginVisible = false } },
-            { server ->
+            config = config,
+            savedServers = savedServers,
+            onDismiss = { loginVisible = false },
+            onLogin = { server, user, pass -> vm.login(server, user, pass) { ok -> if (ok) loginVisible = false } },
+            onQuickSwitch = { server ->
+                vm.switchServer(server)
+                loginVisible = false
+            },
+            onDeleteServer = vm::removeServer,
+            onTest = { server ->
                 vm.testConnection(server) { result ->
                     Toast.makeText(
                         context,
