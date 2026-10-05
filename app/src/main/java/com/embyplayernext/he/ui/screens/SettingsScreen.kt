@@ -145,6 +145,12 @@ fun SettingsScreen(
                         config.autoPlayNextEpisode,
                     ) { onUpdate(config.copy(autoPlayNextEpisode = it)) }
                     HorizontalDivider()
+                    SwitchRow(
+                        "记忆播放倍速",
+                        if (config.rememberPlaybackSpeed && config.lastPlaybackSpeed != 1f) "开启后自动沿用上次倍速（当前记忆: ${config.lastPlaybackSpeed}x）" else "播放视频时自动应用上一次选择的播放倍速",
+                        config.rememberPlaybackSpeed,
+                    ) { onUpdate(config.copy(rememberPlaybackSpeed = it)) }
+                    HorizontalDivider()
                     IntChoice(
                         title = "后退步长",
                         current = config.rewindSeconds,
@@ -192,7 +198,7 @@ fun SettingsScreen(
                     SettingRow("清除运行日志", "删除本机已记录的运行日志", Icons.Default.DeleteSweep, onClearLog)
                     HorizontalDivider()
                     ListItem(
-                        headlineContent = { Text("EmbyPlayerNext 2.3.27") },
+                        headlineContent = { Text("EmbyPlayerNext 2.3.28") },
                         supportingContent = { Text("Android / Android TV") },
                         leadingContent = { Icon(Icons.Default.Info, null) },
                     )

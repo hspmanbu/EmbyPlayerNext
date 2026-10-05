@@ -7,7 +7,7 @@
 ![Kotlin](https://img.shields.io/badge/Kotlin-2.0.21-7F52FF?logo=kotlin&logoColor=white)
 ![Compose](https://img.shields.io/badge/Jetpack%20Compose-M3-4285F4?logo=jetpackcompose&logoColor=white)
 ![Media3](https://img.shields.io/badge/ExoPlayer-Media3%201.5.1-red)
-![Version](https://img.shields.io/badge/Version-v2.3.27%20(Build%20150)-green)
+![Version](https://img.shields.io/badge/Version-v2.3.28%20(Build%20165)-green)
 
 **全能型 Android 原生 Emby 客户端（手机 · 平板 · TV 大屏完美适配）**  
 *动态端口自动解析与故障自愈 · 瑞芯微(Rockchip等)电视芯片硬解兼容改造 · 自适应双视图排版 · Media3 强劲播放内核*

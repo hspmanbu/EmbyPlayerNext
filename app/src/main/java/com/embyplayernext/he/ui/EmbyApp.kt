@@ -265,6 +265,9 @@ fun EmbyApp(vm: EmbyViewModel = viewModel()) {
                                         onRecover = vm::recoverPlayback,
                                         onPlayAdjacent = vm::playAdjacent,
                                         onExit = vm::closePlayer,
+                                        onSpeedChanged = { newSpeed ->
+                                            vm.updateConfig { it.copy(lastPlaybackSpeed = newSpeed) }
+                                        },
                                     )
                                 }
                             }

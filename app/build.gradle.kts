@@ -12,8 +12,8 @@ android {
         applicationId = "com.embyplayernext.he"
         minSdk = 26
         targetSdk = 35
-        versionCode = 150
-        versionName = "2.3.27"
+        versionCode = 165
+        versionName = "2.3.28"
         ndk {
             abiFilters += listOf("arm64-v8a")
         }

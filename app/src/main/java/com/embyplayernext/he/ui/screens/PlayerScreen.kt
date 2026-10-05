@@ -28,6 +28,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -109,6 +110,7 @@ fun PlayerScreen(
     onRecover: suspend (PlaybackDescriptor, Long) -> PlaybackDescriptor?,
     onPlayAdjacent: (EmbyItem) -> Unit,
     onExit: () -> Unit,
+    onSpeedChanged: ((Float) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
@@ -124,7 +126,10 @@ fun PlayerScreen(
     var controlsVisible by remember { mutableStateOf(true) }
     var locked by remember { mutableStateOf(false) }
     var aspect by remember { mutableStateOf(AspectMode.FIT) }
-    var speed by remember { mutableFloatStateOf(1f) }
+    val initialSpeed = remember(descriptor.playSessionId) {
+        if (config.rememberPlaybackSpeed && config.lastPlaybackSpeed > 0f) config.lastPlaybackSpeed else 1f
+    }
+    var speed by remember(descriptor.playSessionId) { mutableFloatStateOf(initialSpeed) }
     var settingsVisible by remember { mutableStateOf(false) }
     var settingsPage by remember { mutableStateOf(PlayerSettingsPage.MAIN) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -228,6 +233,7 @@ fun PlayerScreen(
             safeStartMs,
         )
         player.prepare()
+        player.setPlaybackSpeed(speed)
         player.playWhenReady = true
         diagnostics.log("PlayerAttempt", "prepare issued item=${item.id} attempt=$recoveryAttempt state=${player.playbackState} positionMs=${player.currentPosition} bufferedMs=${player.bufferedPosition} loading=${player.isLoading} playWhenReady=${player.playWhenReady}")
     }
@@ -1041,6 +1047,9 @@ fun PlayerScreen(
             onSpeed = {
                 speed = it
                 controller?.setPlaybackSpeed(it)
+                if (config.rememberPlaybackSpeed) {
+                    onSpeedChanged?.invoke(it)
+                }
             },
             onDismiss = { settingsVisible = false; settingsPage = PlayerSettingsPage.MAIN },
         )
@@ -1492,6 +1501,27 @@ fun SpeedPickerPage(
     onDone: () -> Unit,
 ) {
     val speeds = listOf(.5f, .75f, 1f, 1.25f, 1.5f, 1.75f, 2f, 2.25f, 2.5f, 2.75f, 3f)
+    val targetSpeed = remember(speed) {
+        speeds.minByOrNull { kotlin.math.abs(it - speed) } ?: 1f
+    }
+    val targetIndex = remember(targetSpeed) { speeds.indexOf(targetSpeed) }
+    val currentSpeedFocusRequester = remember { FocusRequester() }
+    val gridState = rememberLazyGridState()
+
+    LaunchedEffect(targetSpeed) {
+        if (targetIndex >= 0) {
+            runCatching { gridState.scrollToItem(targetIndex) }
+        }
+        for (i in 0..4) {
+            kotlinx.coroutines.delay(60)
+            val ok = runCatching {
+                currentSpeedFocusRequester.requestFocus()
+                true
+            }.getOrDefault(false)
+            if (ok) break
+        }
+    }
+
     Column(Modifier.fillMaxSize().padding(22.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "返回") }
@@ -1501,16 +1531,19 @@ fun SpeedPickerPage(
         Spacer(Modifier.height(14.dp))
         LazyVerticalGrid(
             columns = GridCells.Adaptive(if (remoteMode) 150.dp else 110.dp),
+            state = gridState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             items(speeds) { value ->
+                val isCurrent = kotlin.math.abs(value - targetSpeed) < 0.01f
                 PlayerChoiceTile(
-                    selected = speed == value,
+                    selected = kotlin.math.abs(value - speed) < 0.01f,
                     title = "${value}x",
                     onClick = { onSpeed(value) },
+                    modifier = if (isCurrent) Modifier.focusRequester(currentSpeedFocusRequester) else Modifier,
                 )
             }
         }

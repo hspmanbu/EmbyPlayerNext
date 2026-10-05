@@ -179,7 +179,7 @@ fun HomeScreen(
                 if (resume.isNotEmpty()) {
                     item { SectionTitle("继续观看", "${resume.size} 个正在观看内容") }
                     item {
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(end = 6.dp)) {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(start = 12.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)) {
                             items(resume, key = { it.id }) { item ->
                                 ResumeCard(
                                     item = item,
@@ -197,7 +197,7 @@ fun HomeScreen(
                 if (views.isNotEmpty()) {
                     item { SectionTitle("我的媒体库", "查看全部", onLibraries) }
                     item {
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(end = 6.dp)) {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(start = 12.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)) {
                             items(views, key = { it.id }) { view ->
                                 LibraryCoverCard(view, viewImageFor(view), { onOpenView(view) }, Modifier.width(libraryWidth))
                             }
@@ -208,7 +208,7 @@ fun HomeScreen(
                 if (latest.isNotEmpty()) {
                     item { SectionTitle("最近入库", "当前服务器最新加入的媒体") }
                     item {
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(end = 6.dp)) {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(start = 12.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)) {
                             items(latest.take(24), key = { it.id }) { item ->
                                 MediaCard(item, imageFor(item, "Primary"), { onOpenItem(item) }, Modifier.width(cardWidth(item, wide)))
                             }
@@ -219,7 +219,7 @@ fun HomeScreen(
                 if (favorites.isNotEmpty()) {
                     item { SectionTitle("我的收藏", "跨媒体库收藏") }
                     item {
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(end = 6.dp)) {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(start = 12.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)) {
                             items(favorites.take(24), key = { it.id }) { item ->
                                 MediaCard(item, imageFor(item, "Primary"), { onOpenItem(item) }, Modifier.width(cardWidth(item, wide)))
                             }
@@ -233,7 +233,7 @@ fun HomeScreen(
 
 @Composable
 private fun SectionTitle(title: String, subtitle: String, onAction: (() -> Unit)? = null) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
         if (onAction != null) {
             TextButton(onClick = onAction) {

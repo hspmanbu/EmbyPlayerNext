@@ -61,6 +61,8 @@ class AppPreferences(context: Context) {
             gestureSeekSeconds = safeInt("gesture_seek_seconds", 180),
             allowInsecureHttps = effectiveServer?.allowInsecureHttps ?: prefs.getBoolean("allow_insecure_https", false),
             autoPlayNextEpisode = prefs.getBoolean("auto_play_next_episode", true),
+            rememberPlaybackSpeed = prefs.getBoolean("remember_playback_speed", true),
+            lastPlaybackSpeed = safeFloat("last_playback_speed", 1.0f),
         )
     }.getOrElse {
         EmbyServerConfig(uiScale = defaultUiScale())
@@ -261,6 +263,8 @@ class AppPreferences(context: Context) {
             .putInt("gesture_seek_seconds", c.gestureSeekSeconds)
             .putBoolean("allow_insecure_https", c.allowInsecureHttps)
             .putBoolean("auto_play_next_episode", c.autoPlayNextEpisode)
+            .putBoolean("remember_playback_speed", c.rememberPlaybackSpeed)
+            .putFloat("last_playback_speed", c.lastPlaybackSpeed)
             .apply()
     }
 

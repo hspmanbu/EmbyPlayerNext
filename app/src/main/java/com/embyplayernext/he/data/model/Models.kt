@@ -21,6 +21,8 @@ data class EmbyServerConfig(
     val gestureSeekSeconds: Int = 180,
     val allowInsecureHttps: Boolean = false,
     val autoPlayNextEpisode: Boolean = true,
+    val rememberPlaybackSpeed: Boolean = true,
+    val lastPlaybackSpeed: Float = 1.0f,
 )
 
 data class SavedServerProfile(
