@@ -448,7 +448,7 @@ class EmbyViewModel(app: Application) : AndroidViewModel(app) {
                     }.orEmpty()
                     _seasons.value = emptyList()
                     _selectedSeasonId.value = null
-                    _episodes.value = sameSeason.ifEmpty { sortedEpisodes }
+                    _episodes.value = sortedEpisodes.ifEmpty { sameSeason }
                     if (sortedEpisodes.any { it.id == detail.id }) _episodePlaybackQueue.value = sortedEpisodes
                 } else {
                     _seasons.value = emptyList()

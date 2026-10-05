@@ -75,6 +75,44 @@ fun DetailScreen(
     val contentMaxWidth = if (isWide) 1280.dp else 920.dp
     var deleteConfirm by remember(item.id) { mutableStateOf(false) }
     val pageState = rememberLazyListState()
+    val moreEpisodesRowState = rememberLazyListState()
+
+    val nearbyEpisodes = remember(item.id, episodes) {
+        if (episodes.isEmpty()) emptyList()
+        else {
+            val currentIndex = episodes.indexOfFirst { it.id == item.id }
+            if (currentIndex < 0) {
+                episodes.take(35)
+            } else {
+                val total = episodes.size
+                val maxWindow = 35
+                if (total <= maxWindow) {
+                    episodes
+                } else {
+                    val beforeCount = 5
+                    val afterCount = 25
+                    var start = (currentIndex - beforeCount).coerceAtLeast(0)
+                    var end = (currentIndex + 1 + afterCount).coerceAtMost(total)
+                    if (end - start < maxWindow) {
+                        start = (end - maxWindow).coerceAtLeast(0)
+                    }
+                    episodes.subList(start, end)
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(item.id, nearbyEpisodes) {
+        if (item.type == "Episode" && nearbyEpisodes.isNotEmpty()) {
+            val targetIndex = nearbyEpisodes.indexOfFirst { it.id == item.id }
+            if (targetIndex > 0) {
+                val scrollIndex = (targetIndex - 1).coerceAtLeast(0)
+                moreEpisodesRowState.scrollToItem(scrollIndex)
+            } else {
+                moreEpisodesRowState.scrollToItem(0)
+            }
+        }
+    }
 
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         DetailBackdrop(item, loading, isWide, imageFor)
@@ -249,23 +287,26 @@ fun DetailScreen(
                     item {
                         SectionHeader(
                             "更多来自",
-                            listOfNotNull(item.seriesName, item.seasonName).joinToString(" · ").ifBlank { "同系列剧集" },
+                            item.seriesName?.takeIf { it.isNotBlank() }
+                                ?: listOfNotNull(item.seriesName, item.seasonName).joinToString(" · ").ifBlank { "同系列剧集" },
                             contentMaxWidth,
                             contentPadding,
                         )
                     }
                     item {
                         LazyRow(
+                            state = moreEpisodesRowState,
                             modifier = Modifier.widthIn(max = contentMaxWidth).fillMaxWidth(),
                             contentPadding = PaddingValues(horizontal = contentPadding),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
-                            items(episodes.filter { it.id != item.id }.take(30), key = { it.id }) { episode ->
+                            items(nearbyEpisodes, key = { it.id }) { episode ->
                                 MoreFromEpisodeCard(
                                     item = episode,
                                     imageUrl = imageFor(episode, "Primary"),
                                     isTv = isTv,
-                                    onClick = { onEpisode(episode) },
+                                    isCurrent = episode.id == item.id,
+                                    onClick = { if (episode.id != item.id) onEpisode(episode) },
                                     onPlay = { onPlayEpisode(episode) },
                                 )
                             }
@@ -748,6 +789,7 @@ private fun MoreFromEpisodeCard(
     item: EmbyItem,
     imageUrl: String?,
     isTv: Boolean,
+    isCurrent: Boolean = false,
     onClick: () -> Unit,
     onPlay: () -> Unit,
 ) {
@@ -758,9 +800,14 @@ private fun MoreFromEpisodeCard(
         onClick = onClick,
         modifier = Modifier.width(if (isTv) 280.dp else 236.dp).onFocusChanged { focused = it.isFocused }.scale(scale),
         shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = .94f),
-        border = if (focusActive) BorderStroke(3.dp, MaterialTheme.colorScheme.primary) else null,
-        tonalElevation = 3.dp,
+        color = if (isCurrent) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.32f)
+                else MaterialTheme.colorScheme.surfaceContainer.copy(alpha = .94f),
+        border = when {
+            focusActive -> BorderStroke(3.dp, MaterialTheme.colorScheme.primary)
+            isCurrent -> BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.65f))
+            else -> null
+        },
+        tonalElevation = if (isCurrent) 6.dp else 3.dp,
     ) {
         Column {
             Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(MaterialTheme.colorScheme.surfaceVariant)) {
@@ -785,14 +832,34 @@ private fun MoreFromEpisodeCard(
                 }
             }
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    listOfNotNull(
-                        item.parentIndexNumber?.let { "S$it" },
-                        item.indexNumber?.let { "E$it" },
-                    ).joinToString(" · "),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text(
+                        listOfNotNull(
+                            item.parentIndexNumber?.let { "S$it" },
+                            item.indexNumber?.let { "E$it" },
+                        ).joinToString(" · "),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    if (isCurrent) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = MaterialTheme.colorScheme.primary,
+                        ) {
+                            Text(
+                                "当前集",
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
+                }
                 Text(item.name, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 item.durationMs.takeIf { it > 0 }?.let {
                     Text("${it / 60_000} 分钟", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
