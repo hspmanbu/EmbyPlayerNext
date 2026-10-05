@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.embyplayernext.he.ui.components.tvScrollThenFocus
 import com.embyplayernext.he.data.model.EmbyServerConfig
@@ -302,46 +303,70 @@ private fun SettingServerItem(
     onSelect: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    ListItem(
-        headlineContent = {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(server.serverName, fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal)
-                if (isActive) {
-                    Surface(shape = RoundedCornerShape(4.dp), color = MaterialTheme.colorScheme.primary) {
-                        Text(
-                            "当前使用",
-                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            fontWeight = FontWeight.Bold
-                        )
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = if (isActive) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+               else MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Default.Dns,
+                contentDescription = null,
+                tint = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .then(if (!isActive && server.accessToken.isNotBlank()) Modifier.clickable(onClick = onSelect) else Modifier)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(server.serverName, fontWeight = if (isActive) FontWeight.Bold else FontWeight.SemiBold)
+                    if (isActive) {
+                        Surface(shape = RoundedCornerShape(4.dp), color = MaterialTheme.colorScheme.primary) {
+                            Text(
+                                "当前使用",
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
+                Text(
+                    "${server.username.ifBlank { "未命名用户" }} · ${server.serverUrl}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
-        },
-        supportingContent = {
-            Text(
-                "${server.username.ifBlank { "未命名用户" }} · ${server.serverUrl}",
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        },
-        trailingContent = {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (!isActive && server.accessToken.isNotBlank()) {
-                    TextButton(onClick = onSelect) { Text("切换") }
-                }
-                IconButton(onClick = onDelete) {
-                    Icon(
-                        Icons.Default.Delete,
-                        contentDescription = "删除服务器",
-                        modifier = Modifier.size(20.dp),
-                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
-                    )
+            if (!isActive && server.accessToken.isNotBlank()) {
+                Button(
+                    onClick = onSelect,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                    modifier = Modifier.padding(end = 4.dp)
+                ) {
+                    Text("切换")
                 }
             }
-        },
-        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-        modifier = if (!isActive) Modifier.clickable(onClick = onSelect) else Modifier
-    )
+            IconButton(onClick = onDelete) {
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = "删除服务器",
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
+                )
+            }
+        }
+    }
 }
 

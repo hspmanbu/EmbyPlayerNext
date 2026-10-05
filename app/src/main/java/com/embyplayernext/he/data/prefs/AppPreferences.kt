@@ -112,7 +112,7 @@ class AppPreferences(context: Context) {
         val current = getSavedServers().filterNot {
             it.id == profile.id || (it.serverUrl.trimEnd('/') == profile.serverUrl.trimEnd('/') && it.username == profile.username)
         }
-        val target = profile.copy(lastConnected = System.currentTimeMillis())
+        val target = profile.copy(lastConnected = if (profile.lastConnected > 0) profile.lastConnected else System.currentTimeMillis())
         val updated = (listOf(target) + current).sortedByDescending { it.lastConnected }
         val arr = JSONArray()
         for (p in updated) {
@@ -139,6 +139,48 @@ class AppPreferences(context: Context) {
             .apply()
     }
 
+    fun saveLogin(
+        serverUrl: String,
+        serverName: String,
+        username: String,
+        userId: String,
+        accessToken: String,
+    ): EmbyServerConfig {
+        val normalizedUrl = serverUrl.trim().trimEnd('/')
+        val currentServers = getSavedServers()
+        val existing = currentServers.firstOrNull {
+            it.serverUrl.trimEnd('/') == normalizedUrl && it.username == username
+        }
+        val profileId = existing?.id ?: java.util.UUID.randomUUID().toString()
+        val newProfile = (existing ?: SavedServerProfile(id = profileId, serverUrl = normalizedUrl, username = username)).copy(
+            id = profileId,
+            serverUrl = normalizedUrl,
+            serverName = serverName.ifBlank { existing?.serverName ?: "Emby Server" },
+            username = username,
+            userId = userId,
+            accessToken = accessToken,
+            lastConnected = System.currentTimeMillis(),
+        )
+        saveServerProfile(newProfile)
+
+        val updated = _config.value.copy(
+            serverUrl = newProfile.serverUrl,
+            username = newProfile.username,
+            userId = newProfile.userId,
+            accessToken = newProfile.accessToken,
+            serverName = newProfile.serverName,
+            dynamicPortEnabled = newProfile.dynamicPortEnabled,
+            dynamicPortTargetDomain = newProfile.dynamicPortTargetDomain,
+            dynamicPortTimeoutSeconds = newProfile.dynamicPortTimeoutSeconds,
+            dynamicPortFetchUrl = newProfile.dynamicPortFetchUrl,
+            dynamicPortServiceName = newProfile.dynamicPortServiceName,
+            allowInsecureHttps = newProfile.allowInsecureHttps,
+        )
+        applyConfigToSharedPreferences(updated)
+        _config.value = updated
+        return updated
+    }
+
     fun removeServerProfile(serverId: String) {
         val current = getSavedServers().filterNot { it.id == serverId }
         val arr = JSONArray()
@@ -161,40 +203,43 @@ class AppPreferences(context: Context) {
             )
         }
         val editor = prefs.edit().putString("saved_server_profiles", arr.toString())
-        if (prefs.getString("active_server_id", "") == serverId) {
+        val isActive = prefs.getString("active_server_id", "") == serverId
+        editor.apply()
+
+        if (isActive) {
             val next = current.firstOrNull()
             if (next != null) {
-                editor.putString("active_server_id", next.id)
+                switchToServer(next.id)
             } else {
-                editor.remove("active_server_id")
+                prefs.edit().remove("active_server_id").apply()
+                clearLogin()
             }
         }
-        editor.apply()
     }
 
     fun switchToServer(serverId: String): Boolean {
         val target = getSavedServers().firstOrNull { it.id == serverId } ?: return false
-        saveServerProfile(target)
-        update {
-            it.copy(
-                serverUrl = target.serverUrl,
-                username = target.username,
-                userId = target.userId,
-                accessToken = target.accessToken,
-                serverName = target.serverName,
-                dynamicPortEnabled = target.dynamicPortEnabled,
-                dynamicPortTargetDomain = target.dynamicPortTargetDomain,
-                dynamicPortTimeoutSeconds = target.dynamicPortTimeoutSeconds,
-                dynamicPortFetchUrl = target.dynamicPortFetchUrl,
-                dynamicPortServiceName = target.dynamicPortServiceName,
-                allowInsecureHttps = target.allowInsecureHttps,
-            )
-        }
+        val updatedTarget = target.copy(lastConnected = System.currentTimeMillis())
+        saveServerProfile(updatedTarget)
+        val updated = _config.value.copy(
+            serverUrl = updatedTarget.serverUrl,
+            username = updatedTarget.username,
+            userId = updatedTarget.userId,
+            accessToken = updatedTarget.accessToken,
+            serverName = updatedTarget.serverName,
+            dynamicPortEnabled = updatedTarget.dynamicPortEnabled,
+            dynamicPortTargetDomain = updatedTarget.dynamicPortTargetDomain,
+            dynamicPortTimeoutSeconds = updatedTarget.dynamicPortTimeoutSeconds,
+            dynamicPortFetchUrl = updatedTarget.dynamicPortFetchUrl,
+            dynamicPortServiceName = updatedTarget.dynamicPortServiceName,
+            allowInsecureHttps = updatedTarget.allowInsecureHttps,
+        )
+        applyConfigToSharedPreferences(updated)
+        _config.value = updated
         return true
     }
 
-    fun update(transform: (EmbyServerConfig) -> EmbyServerConfig) {
-        val c = transform(_config.value)
+    private fun applyConfigToSharedPreferences(c: EmbyServerConfig) {
         prefs.edit()
             .putString("server_url", c.serverUrl.trimEnd('/'))
             .putString("username", c.username)
@@ -217,20 +262,24 @@ class AppPreferences(context: Context) {
             .putBoolean("allow_insecure_https", c.allowInsecureHttps)
             .putBoolean("auto_play_next_episode", c.autoPlayNextEpisode)
             .apply()
+    }
 
-        if (c.serverUrl.isNotBlank() && c.accessToken.isNotBlank()) {
-            val activeId = prefs.getString("active_server_id", null)
-            val existing = getSavedServers().firstOrNull {
-                (activeId != null && it.id == activeId) ||
-                (it.serverUrl.trimEnd('/') == c.serverUrl.trimEnd('/') && it.username == c.username)
-            }
-            val profile = (existing ?: SavedServerProfile(serverUrl = c.serverUrl, username = c.username)).copy(
+    fun update(transform: (EmbyServerConfig) -> EmbyServerConfig) {
+        val c = transform(_config.value)
+        applyConfigToSharedPreferences(c)
+
+        val activeId = prefs.getString("active_server_id", null)
+        val servers = getSavedServers()
+        val currentProfile = servers.firstOrNull { it.id == activeId }
+            ?: servers.firstOrNull { it.serverUrl.trimEnd('/') == c.serverUrl.trimEnd('/') && it.username == c.username }
+
+        if (currentProfile != null) {
+            val updated = currentProfile.copy(
                 serverUrl = c.serverUrl,
                 serverName = c.serverName,
                 username = c.username,
                 userId = c.userId,
                 accessToken = c.accessToken,
-                lastConnected = System.currentTimeMillis(),
                 dynamicPortEnabled = c.dynamicPortEnabled,
                 dynamicPortTargetDomain = c.dynamicPortTargetDomain,
                 dynamicPortTimeoutSeconds = c.dynamicPortTimeoutSeconds,
@@ -238,14 +287,24 @@ class AppPreferences(context: Context) {
                 dynamicPortServiceName = c.dynamicPortServiceName,
                 allowInsecureHttps = c.allowInsecureHttps,
             )
-            saveServerProfile(profile)
+            saveServerProfile(updated)
         }
 
         _config.value = c
     }
 
     fun updateServerPort(serverUrl: String) = update { it.copy(serverUrl = serverUrl) }
-    fun clearLogin() = update { it.copy(userId = "", accessToken = "") }
+    fun clearLogin() {
+        val activeId = prefs.getString("active_server_id", null)
+        if (activeId != null) {
+            val servers = getSavedServers()
+            val target = servers.firstOrNull { it.id == activeId }
+            if (target != null) {
+                saveServerProfile(target.copy(accessToken = ""))
+            }
+        }
+        update { it.copy(userId = "", accessToken = "") }
+    }
 
     fun getRecentSearches(): List<String> = prefs.getString("recent_searches", "").orEmpty()
         .split('\u001F')

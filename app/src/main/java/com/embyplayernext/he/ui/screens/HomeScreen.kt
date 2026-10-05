@@ -90,7 +90,12 @@ fun HomeScreen(
                             )
                         }
                         IconButton(onClick = onRefresh) { Icon(Icons.Default.Refresh, "刷新") }
-                        if (config.accessToken.isBlank()) IconButton(onClick = onLogin) { Icon(Icons.Default.Login, "登录") }
+                        IconButton(onClick = onLogin) {
+                            Icon(
+                                if (config.accessToken.isBlank()) Icons.Default.Login else Icons.Default.Dns,
+                                contentDescription = if (config.accessToken.isBlank()) "登录服务器" else "服务器与多账号管理"
+                            )
+                        }
                     }
 
                     Surface(

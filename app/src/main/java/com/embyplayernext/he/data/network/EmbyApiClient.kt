@@ -117,11 +117,14 @@ class EmbyApiClient(
         val root = JSONObject(body)
         val user = root.getJSONObject("User")
         val token = root.getString("AccessToken")
-        val cfg = config().copy(
-            serverUrl = normalized, username = username, userId = user.getString("Id"), accessToken = token,
-            serverName = root.optJSONObject("Server")?.optString("Name")?.takeIf { it.isNotBlank() } ?: config().serverName
+        val sName = root.optJSONObject("Server")?.optString("Name")?.takeIf { it.isNotBlank() } ?: "Emby Server"
+        val cfg = prefs.saveLogin(
+            serverUrl = normalized,
+            serverName = sName,
+            username = username,
+            userId = user.getString("Id"),
+            accessToken = token,
         )
-        prefs.update { cfg }
         cfg
     }
 

@@ -127,10 +127,10 @@ class EmbyViewModel(app: Application) : AndroidViewModel(app) {
         if (prefs.switchToServer(profile.id)) {
             NetworkSupport.clearCachedClients()
             refreshSavedServers()
-            clearHomeContent()
-            _message.value = "✓ 已切换至 ${profile.serverName} (${profile.username})"
+            clearAllServerContent()
+            _message.value = "✓ 已切换至 ${profile.serverName} (${profile.username.ifBlank { "未命名" }})"
+            _screen.value = AppScreen.HOME
             if (profile.accessToken.isNotBlank()) {
-                _screen.value = AppScreen.HOME
                 loadHome()
             }
         }
@@ -138,13 +138,19 @@ class EmbyViewModel(app: Application) : AndroidViewModel(app) {
 
     fun removeServer(serverId: String) {
         prefs.removeServerProfile(serverId)
+        NetworkSupport.clearCachedClients()
         refreshSavedServers()
+        clearAllServerContent()
+        if (prefs.config.value.accessToken.isNotBlank()) {
+            loadHome()
+        }
     }
 
     fun login(server: String, username: String, password: String, done: (Boolean) -> Unit = {}) = launchBusy {
         api.login(server, username, password).onSuccess {
+            NetworkSupport.clearCachedClients()
             refreshSavedServers()
-            clearHomeContent()
+            clearAllServerContent()
             _message.value = "✓ 已连接 ${it.serverName}"
             _screen.value = AppScreen.HOME
             loadHome()
@@ -161,20 +167,9 @@ class EmbyViewModel(app: Application) : AndroidViewModel(app) {
 
     fun logout() {
         prefs.clearLogin()
+        NetworkSupport.clearCachedClients()
         refreshSavedServers()
-        _views.value = emptyList()
-        _resumeItems.value = emptyList()
-        _nextUpItems.value = emptyList()
-        _recentPlayedItems.value = emptyList()
-        _latestItems.value = emptyList()
-        _favoriteItems.value = emptyList()
-        _items.value = emptyList()
-        _globalSearchResults.value = emptyList()
-        _similarItems.value = emptyList()
-        _episodePlaybackQueue.value = emptyList()
-        detailHistory.clear()
-        _selectedItem.value = null
-        _libraryRestoreItemId.value = null
+        clearAllServerContent()
         _screen.value = AppScreen.HOME
     }
 
@@ -800,13 +795,32 @@ class EmbyViewModel(app: Application) : AndroidViewModel(app) {
     }
     fun clearDiagnostics() = logger.clear()
 
-    private fun clearHomeContent() {
+    private fun clearAllServerContent() {
+        detailLoadJob?.cancel()
+        libraryLoadJob?.cancel()
+        seasonLoadJob?.cancel()
+        globalSearchJob?.cancel()
+        librarySearchJob?.cancel()
+        localRecentPlayed.clear()
+        detailHistory.clear()
         _views.value = emptyList()
         _resumeItems.value = emptyList()
         _nextUpItems.value = emptyList()
         _recentPlayedItems.value = emptyList()
         _latestItems.value = emptyList()
         _favoriteItems.value = emptyList()
+        _items.value = emptyList()
+        _totalItems.value = 0
+        _currentLibrary.value = null
+        _breadcrumbs.value = emptyList()
+        _selectedItem.value = null
+        _seasons.value = emptyList()
+        _episodes.value = emptyList()
+        _episodePlaybackQueue.value = emptyList()
+        _globalSearchResults.value = emptyList()
+        _similarItems.value = emptyList()
+        _searchQuery.value = ""
+        _globalSearchQuery.value = ""
     }
 
     private fun defaultModeFor(view: EmbyView): EmbyDisplayMode = when (view.collectionType?.lowercase()) {

@@ -30,8 +30,8 @@ fun LoginDialog(
     onDeleteServer: (String) -> Unit = {},
     onTest: (String) -> Unit,
 ) {
-    var server by remember(config.serverUrl) { mutableStateOf(config.serverUrl) }
-    var user by remember(config.username) { mutableStateOf(config.username) }
+    var server by remember { mutableStateOf(if (savedServers.isEmpty()) config.serverUrl else "") }
+    var user by remember { mutableStateOf(if (savedServers.isEmpty()) config.username else "") }
     var pass by remember { mutableStateOf("") }
 
     AlertDialog(
@@ -39,7 +39,7 @@ fun LoginDialog(
         title = {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(Icons.Default.Dns, null, tint = MaterialTheme.colorScheme.primary)
-                Text("连接 Emby 服务器")
+                Text(if (savedServers.isEmpty()) "连接 Emby 服务器" else "服务器与账号管理")
             }
         },
         text = {
@@ -58,25 +58,29 @@ fun LoginDialog(
                                 shape = RoundedCornerShape(12.dp),
                                 color = if (isActive) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
                                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        server = s.serverUrl
-                                        user = s.username
-                                        if (s.accessToken.isNotBlank() && !isActive) {
-                                            onQuickSwitch(s)
-                                        }
-                                    }
+                                modifier = Modifier.fillMaxWidth()
                             ) {
                                 Row(
                                     Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Column(Modifier.weight(1f)) {
+                                    Column(
+                                        Modifier
+                                            .weight(1f)
+                                            .clickable {
+                                                server = s.serverUrl
+                                                user = s.username
+                                                if (s.accessToken.isNotBlank() && !isActive) {
+                                                    onQuickSwitch(s)
+                                                }
+                                            }
+                                    ) {
                                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                             Text(s.serverName, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                             if (isActive) {
-                                                Text("[当前]", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                                                Surface(shape = RoundedCornerShape(4.dp), color = MaterialTheme.colorScheme.primary) {
+                                                    Text("当前", modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold)
+                                                }
                                             }
                                         }
                                         Text(
@@ -88,7 +92,11 @@ fun LoginDialog(
                                         )
                                     }
                                     if (s.accessToken.isNotBlank() && !isActive) {
-                                        TextButton(onClick = { onQuickSwitch(s) }) {
+                                        Button(
+                                            onClick = { onQuickSwitch(s) },
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                            modifier = Modifier.padding(end = 4.dp)
+                                        ) {
                                             Text("切换")
                                         }
                                     }
