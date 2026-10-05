@@ -1,6 +1,7 @@
 package com.embyplayernext.he.data.network
 
 import com.embyplayernext.he.data.model.EmbyServerConfig
+import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
 import java.security.SecureRandom
 import java.security.cert.X509Certificate
@@ -19,7 +20,7 @@ object NetworkSupport {
     }
 
     fun apiClient(config: EmbyServerConfig, timeoutSeconds: Int = 20): OkHttpClient {
-        val timeout = timeoutSeconds.coerceIn(2, 120)
+        val timeout = timeoutSeconds.coerceIn(2, 60)
         val key = "api:$timeout:${config.allowInsecureHttps}"
         return clients.getOrPut(key) { buildApiClient(config, timeout) }
     }
@@ -30,15 +31,15 @@ object NetworkSupport {
         return mediaClients.getOrPut(key) { buildMediaClient(config, timeout) }
     }
 
-    private fun buildApiClient(config: EmbyServerConfig, timeoutSeconds: Int): OkHttpClient {
+    private fun buildApiClient(config: EmbyServerConfig, connectTimeoutSeconds: Int): OkHttpClient {
         val b = OkHttpClient.Builder()
-            .connectTimeout(timeoutSeconds.toLong(), TimeUnit.SECONDS)
-            .readTimeout(timeoutSeconds.toLong(), TimeUnit.SECONDS)
-            .writeTimeout(timeoutSeconds.toLong(), TimeUnit.SECONDS)
-            .callTimeout(timeoutSeconds.toLong(), TimeUnit.SECONDS)
-            .retryOnConnectionFailure(false)
+            .connectTimeout(connectTimeoutSeconds.toLong(), TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
             .followRedirects(true)
             .followSslRedirects(true)
+            .connectionPool(ConnectionPool(8, 30, TimeUnit.SECONDS))
         configureSsl(b, config)
         return b.build()
     }
@@ -46,10 +47,12 @@ object NetworkSupport {
     private fun buildMediaClient(config: EmbyServerConfig, connectTimeoutSeconds: Int): OkHttpClient {
         val b = OkHttpClient.Builder()
             .connectTimeout(connectTimeoutSeconds.toLong(), TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(45, TimeUnit.SECONDS)
+            .writeTimeout(45, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
             .followRedirects(true)
             .followSslRedirects(true)
+            .connectionPool(ConnectionPool(8, 60, TimeUnit.SECONDS))
         configureSsl(b, config)
         return b.build()
     }

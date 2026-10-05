@@ -54,23 +54,45 @@ class EmbyApiClient(
             val c = config()
             val retryable = first is IOException || first is SocketTimeoutException || (first is HttpStatusException && first.code in setOf(502, 503, 504))
             val eligible = c.dynamicPortEnabled && (c.dynamicPortTargetDomain.isBlank() || c.serverUrl.contains(c.dynamicPortTargetDomain, true))
-            if (!retryable || !eligible) throw first
-            logger.log("DynamicPort", "request failed: ${first.message}; resolving...")
-            dynamicResolver.resolveAndSwitch().getOrThrow()
-            runOnce()
+            if (retryable && eligible && c.dynamicPortFetchUrl.isNotBlank() && c.dynamicPortServiceName.isNotBlank()) {
+                logger.log("DynamicPort", "request failed: ${first.message}; resolving...")
+                val switchResult = dynamicResolver.resolveAndSwitch()
+                if (switchResult.isSuccess) {
+                    return@withContext runOnce()
+                } else {
+                    logger.log("DynamicPort", "resolve failed: ${switchResult.exceptionOrNull()?.message}")
+                }
+            }
+            if (first is IOException) {
+                try {
+                    logger.log("HTTP", "transient IO error (${first.message}), retrying once...")
+                    return@withContext runOnce()
+                } catch (retryEx: Throwable) {
+                    logger.log("HTTP", "retry failed: ${retryEx.message}")
+                }
+            }
+            throw first
         }
     }
 
     private suspend fun executeDirect(candidate: EmbyServerConfig, requestFactory: () -> Request): String = withContext(Dispatchers.IO) {
-        val req = requestFactory()
-        logger.log("HTTP", "${req.method} ${req.url}")
-        NetworkSupport.apiClient(candidate, if (candidate.dynamicPortEnabled) candidate.dynamicPortTimeoutSeconds else 20)
-            .newCall(req).execute().use { r ->
-                val body = r.body?.string().orEmpty()
-                logger.log("HTTP", "${r.code} ${req.url.encodedPath} ${body.take(800)}")
-                if (!r.isSuccessful) throw HttpStatusException(r.code, body)
-                body
-            }
+        suspend fun runDirect(): String {
+            val req = requestFactory()
+            logger.log("HTTP", "${req.method} ${req.url}")
+            return NetworkSupport.apiClient(candidate, if (candidate.dynamicPortEnabled) candidate.dynamicPortTimeoutSeconds else 20)
+                .newCall(req).execute().use { r ->
+                    val body = r.body?.string().orEmpty()
+                    logger.log("HTTP", "${r.code} ${req.url.encodedPath} ${body.take(800)}")
+                    if (!r.isSuccessful) throw HttpStatusException(r.code, body)
+                    body
+                }
+        }
+        try {
+            runDirect()
+        } catch (first: IOException) {
+            logger.log("HTTP", "direct call failed: ${first.message}; retrying once...")
+            runDirect()
+        }
     }
 
     suspend fun testConnection(serverUrl: String? = null): Result<String> = runCatching {
