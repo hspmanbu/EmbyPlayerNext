@@ -214,7 +214,7 @@ fun EmbyApp(vm: EmbyViewModel = viewModel()) {
                                         onPlay = { vm.play(resume = it) },
                                         onFavorite = vm::toggleFavorite,
                                         onPlayed = vm::togglePlayed,
-                                        onDelete = { vm.deleteSelected() },
+                                        onDelete = { item -> vm.deleteItem(item) },
                                         onSeason = vm::selectSeason,
                                         onEpisode = vm::openEpisode,
                                         onPlayEpisode = vm::playEpisode,

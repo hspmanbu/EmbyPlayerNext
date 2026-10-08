@@ -577,10 +577,18 @@ class EmbyViewModel(app: Application) : AndroidViewModel(app) {
             .onFailure { _message.value = "操作失败: ${it.message}" }
     }
 
-    fun deleteSelected(done: () -> Unit = {}) = launchBusy {
-        val i = _selectedItem.value ?: return@launchBusy
-        runCatching { api.deleteItem(i.id) }.onSuccess {
-            _message.value = "《${i.name}》已从服务器删除"
+    fun deleteItem(item: EmbyItem, done: () -> Unit = {}) = launchBusy {
+        if (item.id.isBlank()) {
+            _message.value = "删除失败: 无效的媒体ID"
+            return@launchBusy
+        }
+        val safeTypes = setOf("Movie", "Episode", "Video", "Audio", "MusicVideo", "Trailer")
+        if (item.isFolder || item.type !in safeTypes) {
+            _message.value = "安全防护：客户端仅允许删除单个媒体文件，禁止删除文件夹或整部剧集"
+            return@launchBusy
+        }
+        runCatching { api.deleteItem(item.id) }.onSuccess {
+            _message.value = "《${item.name}》已从服务器删除"
             done()
             if (detailHistory.isNotEmpty()) {
                 val previous = detailHistory.removeLast()
@@ -596,6 +604,11 @@ class EmbyViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }.onFailure { _message.value = "删除失败: ${it.message}" }
+    }
+
+    fun deleteSelected(done: () -> Unit = {}) {
+        val current = _selectedItem.value ?: return
+        deleteItem(current, done)
     }
 
     fun play(item: EmbyItem? = null, resume: Boolean = true) = launchBusy {

@@ -54,7 +54,7 @@ fun DetailScreen(
     onPlay: (Boolean) -> Unit,
     onFavorite: () -> Unit,
     onPlayed: () -> Unit,
-    onDelete: () -> Unit,
+    onDelete: (EmbyItem) -> Unit,
     onSeason: (EmbyItem) -> Unit,
     onEpisode: (EmbyItem) -> Unit,
     onPlayEpisode: (EmbyItem) -> Unit,
@@ -170,12 +170,15 @@ fun DetailScreen(
                                 isTv = isTv,
                                 onClick = onPlayed,
                             )
-                            DetailPill(
-                                text = "删除",
-                                icon = Icons.Default.Delete,
-                                isTv = isTv,
-                                onClick = { deleteConfirm = true },
-                            )
+                            val canDelete = !item.isFolder && item.type in setOf("Movie", "Episode", "Video", "Audio", "MusicVideo", "Trailer")
+                            if (canDelete) {
+                                DetailPill(
+                                    text = "删除",
+                                    icon = Icons.Default.Delete,
+                                    isTv = isTv,
+                                    onClick = { deleteConfirm = true },
+                                )
+                            }
                         }
 
                         if (item.genres.isNotEmpty()) {
@@ -363,12 +366,27 @@ fun DetailScreen(
     }
 
     if (deleteConfirm) {
+        val typeLabel = when (item.type) {
+            "Movie" -> "电影"
+            "Episode" -> "剧集单集"
+            "Audio" -> "音频"
+            else -> "媒体文件"
+        }
         AlertDialog(
             onDismissRequest = { deleteConfirm = false },
-            title = { Text("删除媒体") },
-            text = { Text("确定要从服务器删除《${item.name}》吗？\n\n这可能同时删除对应的媒体文件，且无法撤销。") },
+            title = { Text("删除$typeLabel") },
+            text = { Text("确定要从服务器删除${typeLabel}《${item.name}》吗？\n\n此操作会永久删除服务端对应的媒体文件，且无法撤销。") },
             confirmButton = {
-                Button(onClick = { deleteConfirm = false; onDelete() }) { Text("删除") }
+                Button(
+                    onClick = {
+                        deleteConfirm = false
+                        onDelete(item)
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
+                    )
+                ) { Text("确认删除") }
             },
             dismissButton = { TextButton(onClick = { deleteConfirm = false }) { Text("取消") } },
         )

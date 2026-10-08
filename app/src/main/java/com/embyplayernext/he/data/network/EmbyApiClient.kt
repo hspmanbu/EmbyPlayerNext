@@ -291,6 +291,7 @@ class EmbyApiClient(
     }
 
     suspend fun deleteItem(itemId: String) {
+        require(itemId.isNotBlank()) { "itemId cannot be blank" }
         execute { requestBuilder("${base()}/Items/$itemId").delete().build() }
     }
 
