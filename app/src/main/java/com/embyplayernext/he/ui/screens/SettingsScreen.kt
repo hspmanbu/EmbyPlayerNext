@@ -198,7 +198,7 @@ fun SettingsScreen(
                     SettingRow("清除运行日志", "删除本机已记录的运行日志", Icons.Default.DeleteSweep, onClearLog)
                     HorizontalDivider()
                     ListItem(
-                        headlineContent = { Text("EmbyPlayerNext 2.3.28") },
+                        headlineContent = { Text("EmbyPlayerNext 2.3.29") },
                         supportingContent = { Text("Android / Android TV") },
                         leadingContent = { Icon(Icons.Default.Info, null) },
                     )
