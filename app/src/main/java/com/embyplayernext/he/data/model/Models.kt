@@ -25,6 +25,7 @@ data class EmbyServerConfig(
     val lastPlaybackSpeed: Float = 1.0f,
     val deepBufferMode: Boolean = false,
     val preferIpv4Dns: Boolean = true,
+    val imageCacheMb: Int = 256,
 )
 
 data class SavedServerProfile(
@@ -43,6 +44,7 @@ data class SavedServerProfile(
     val allowInsecureHttps: Boolean = false,
     val deepBufferMode: Boolean = false,
     val preferIpv4Dns: Boolean = true,
+    val imageCacheMb: Int = 256,
 )
 
 data class UserDataItem(

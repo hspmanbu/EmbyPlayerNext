@@ -38,6 +38,7 @@ class AppPreferences(context: Context) {
                 allowInsecureHttps = prefs.getBoolean("allow_insecure_https", false),
                 deepBufferMode = prefs.getBoolean("deep_buffer_mode", false),
                 preferIpv4Dns = prefs.getBoolean("prefer_ipv4_dns", true),
+                imageCacheMb = safeInt("image_cache_mb", 256),
             )
             saveServerProfile(initial)
             initial
@@ -68,6 +69,7 @@ class AppPreferences(context: Context) {
             lastPlaybackSpeed = safeFloat("last_playback_speed", 1.0f),
             deepBufferMode = effectiveServer?.deepBufferMode ?: prefs.getBoolean("deep_buffer_mode", false),
             preferIpv4Dns = effectiveServer?.preferIpv4Dns ?: prefs.getBoolean("prefer_ipv4_dns", true),
+            imageCacheMb = safeInt("image_cache_mb", 256),
         )
     }.getOrElse {
         EmbyServerConfig(uiScale = defaultUiScale())
@@ -112,6 +114,7 @@ class AppPreferences(context: Context) {
                     allowInsecureHttps = o.optBoolean("allowInsecureHttps", false),
                     deepBufferMode = o.optBoolean("deepBufferMode", false),
                     preferIpv4Dns = o.optBoolean("preferIpv4Dns", true),
+                    imageCacheMb = o.optInt("imageCacheMb", 256),
                 )
             }.sortedByDescending { it.lastConnected }
         }.getOrDefault(emptyList())
@@ -122,14 +125,9 @@ class AppPreferences(context: Context) {
         return normalized.toHttpUrlOrNull()?.host.orEmpty()
     }
 
-    fun saveServerProfile(profile: SavedServerProfile) {
-        val current = getSavedServers().filterNot {
-            it.id == profile.id || (it.serverUrl.trimEnd('/') == profile.serverUrl.trimEnd('/') && it.username.equals(profile.username, ignoreCase = true))
-        }
-        val target = profile.copy(lastConnected = if (profile.lastConnected > 0) profile.lastConnected else System.currentTimeMillis())
-        val updated = (listOf(target) + current).sortedByDescending { it.lastConnected }
+    fun saveServerProfiles(profiles: List<SavedServerProfile>, activeProfileId: String? = null) {
         val arr = JSONArray()
-        for (p in updated) {
+        for (p in profiles) {
             arr.put(
                 JSONObject()
                     .put("id", p.id)
@@ -147,12 +145,23 @@ class AppPreferences(context: Context) {
                     .put("allowInsecureHttps", p.allowInsecureHttps)
                     .put("deepBufferMode", p.deepBufferMode)
                     .put("preferIpv4Dns", p.preferIpv4Dns)
+                    .put("imageCacheMb", p.imageCacheMb)
             )
         }
-        prefs.edit()
-            .putString("saved_server_profiles", arr.toString())
-            .putString("active_server_id", target.id)
-            .apply()
+        val editor = prefs.edit().putString("saved_server_profiles", arr.toString())
+        if (activeProfileId != null) {
+            editor.putString("active_server_id", activeProfileId)
+        }
+        editor.apply()
+    }
+
+    fun saveServerProfile(profile: SavedServerProfile, makeActive: Boolean = false) {
+        val current = getSavedServers().filterNot {
+            it.id == profile.id || (it.serverUrl.trimEnd('/') == profile.serverUrl.trimEnd('/') && it.username.equals(profile.username, ignoreCase = true))
+        }
+        val target = if (makeActive) profile.copy(lastConnected = System.currentTimeMillis()) else profile
+        val updated = (listOf(target) + current).sortedByDescending { it.lastConnected }
+        saveServerProfiles(updated, activeProfileId = if (makeActive) target.id else null)
     }
 
     fun saveLogin(
@@ -182,6 +191,7 @@ class AppPreferences(context: Context) {
         val defaultInsecure = sameServerAnotherAccount?.allowInsecureHttps ?: globalConfig.allowInsecureHttps
         val defaultDeepBuffer = sameServerAnotherAccount?.deepBufferMode ?: globalConfig.deepBufferMode
         val defaultPreferIpv4 = sameServerAnotherAccount?.preferIpv4Dns ?: globalConfig.preferIpv4Dns
+        val defaultImageCacheMb = sameServerAnotherAccount?.imageCacheMb ?: globalConfig.imageCacheMb
         val resolvedServerName = serverName.ifBlank {
             existing?.serverName ?: sameServerAnotherAccount?.serverName ?: "Emby Server"
         }
@@ -198,6 +208,7 @@ class AppPreferences(context: Context) {
             allowInsecureHttps = defaultInsecure,
             deepBufferMode = defaultDeepBuffer,
             preferIpv4Dns = defaultPreferIpv4,
+            imageCacheMb = defaultImageCacheMb,
         )).copy(
             id = profileId,
             serverUrl = normalizedUrl,
@@ -207,7 +218,7 @@ class AppPreferences(context: Context) {
             accessToken = accessToken,
             lastConnected = System.currentTimeMillis(),
         )
-        saveServerProfile(newProfile)
+        saveServerProfile(newProfile, makeActive = true)
 
         val updated = _config.value.copy(
             serverUrl = newProfile.serverUrl,
@@ -223,6 +234,7 @@ class AppPreferences(context: Context) {
             allowInsecureHttps = newProfile.allowInsecureHttps,
             deepBufferMode = newProfile.deepBufferMode,
             preferIpv4Dns = newProfile.preferIpv4Dns,
+            imageCacheMb = newProfile.imageCacheMb,
         )
         applyConfigToSharedPreferences(updated)
         _config.value = updated
@@ -231,30 +243,8 @@ class AppPreferences(context: Context) {
 
     fun removeServerProfile(serverId: String) {
         val current = getSavedServers().filterNot { it.id == serverId }
-        val arr = JSONArray()
-        for (p in current) {
-            arr.put(
-                JSONObject()
-                    .put("id", p.id)
-                    .put("serverUrl", p.serverUrl.trimEnd('/'))
-                    .put("serverName", p.serverName)
-                    .put("username", p.username)
-                    .put("userId", p.userId)
-                    .put("accessToken", p.accessToken)
-                    .put("lastConnected", p.lastConnected)
-                    .put("dynamicPortEnabled", p.dynamicPortEnabled)
-                    .put("dynamicPortTargetDomain", p.dynamicPortTargetDomain)
-                    .put("dynamicPortTimeoutSeconds", p.dynamicPortTimeoutSeconds)
-                    .put("dynamicPortFetchUrl", p.dynamicPortFetchUrl)
-                    .put("dynamicPortServiceName", p.dynamicPortServiceName)
-                    .put("allowInsecureHttps", p.allowInsecureHttps)
-                    .put("deepBufferMode", p.deepBufferMode)
-                    .put("preferIpv4Dns", p.preferIpv4Dns)
-            )
-        }
-        val editor = prefs.edit().putString("saved_server_profiles", arr.toString())
         val isActive = prefs.getString("active_server_id", "") == serverId
-        editor.apply()
+        saveServerProfiles(current, activeProfileId = if (isActive) current.firstOrNull()?.id else null)
 
         if (isActive) {
             val next = current.firstOrNull()
@@ -270,7 +260,7 @@ class AppPreferences(context: Context) {
     fun switchToServer(serverId: String): Boolean {
         val target = getSavedServers().firstOrNull { it.id == serverId } ?: return false
         val updatedTarget = target.copy(lastConnected = System.currentTimeMillis())
-        saveServerProfile(updatedTarget)
+        saveServerProfile(updatedTarget, makeActive = true)
         val updated = _config.value.copy(
             serverUrl = updatedTarget.serverUrl,
             username = updatedTarget.username,
@@ -285,6 +275,7 @@ class AppPreferences(context: Context) {
             allowInsecureHttps = updatedTarget.allowInsecureHttps,
             deepBufferMode = updatedTarget.deepBufferMode,
             preferIpv4Dns = updatedTarget.preferIpv4Dns,
+            imageCacheMb = updatedTarget.imageCacheMb,
         )
         applyConfigToSharedPreferences(updated)
         _config.value = updated
@@ -310,6 +301,7 @@ class AppPreferences(context: Context) {
             .putInt("rewind_seconds", c.rewindSeconds)
             .putInt("forward_seconds", c.forwardSeconds)
             .putInt("disk_cache_mb", c.cacheMb)
+            .putInt("image_cache_mb", c.imageCacheMb)
             .putInt("gesture_seek_seconds", c.gestureSeekSeconds)
             .putBoolean("allow_insecure_https", c.allowInsecureHttps)
             .putBoolean("auto_play_next_episode", c.autoPlayNextEpisode)
@@ -326,32 +318,20 @@ class AppPreferences(context: Context) {
 
         val activeId = prefs.getString("active_server_id", null)
         val servers = getSavedServers()
-        val currentProfile = servers.firstOrNull { it.id == activeId }
-            ?: servers.firstOrNull { it.serverUrl.trimEnd('/') == c.serverUrl.trimEnd('/') && it.username == c.username }
+        val currentProfile = servers.firstOrNull { it.id == activeId && it.username.equals(c.username, ignoreCase = true) }
+            ?: servers.firstOrNull { it.serverUrl.trimEnd('/') == c.serverUrl.trimEnd('/') && it.username.equals(c.username, ignoreCase = true) }
+            ?: servers.firstOrNull { it.id == activeId }
 
         if (currentProfile != null) {
-            val updated = currentProfile.copy(
-                serverUrl = c.serverUrl,
-                serverName = c.serverName,
-                username = c.username,
-                userId = c.userId,
-                accessToken = c.accessToken,
-                dynamicPortEnabled = c.dynamicPortEnabled,
-                dynamicPortTargetDomain = c.dynamicPortTargetDomain,
-                dynamicPortTimeoutSeconds = c.dynamicPortTimeoutSeconds,
-                dynamicPortFetchUrl = c.dynamicPortFetchUrl,
-                dynamicPortServiceName = c.dynamicPortServiceName,
-                allowInsecureHttps = c.allowInsecureHttps,
-                deepBufferMode = c.deepBufferMode,
-                preferIpv4Dns = c.preferIpv4Dns,
-            )
-            saveServerProfile(updated)
-
             val host = extractHost(c.serverUrl)
-            if (host.isNotBlank()) {
-                val others = getSavedServers().filter { it.id != updated.id && extractHost(it.serverUrl).equals(host, ignoreCase = true) }
-                for (other in others) {
-                    saveServerProfile(other.copy(
+            val updatedServers = servers.map { p ->
+                if (p.id == currentProfile.id) {
+                    p.copy(
+                        serverUrl = c.serverUrl,
+                        serverName = c.serverName,
+                        username = c.username,
+                        userId = c.userId,
+                        accessToken = c.accessToken,
                         dynamicPortEnabled = c.dynamicPortEnabled,
                         dynamicPortTargetDomain = c.dynamicPortTargetDomain,
                         dynamicPortTimeoutSeconds = c.dynamicPortTimeoutSeconds,
@@ -360,9 +340,26 @@ class AppPreferences(context: Context) {
                         allowInsecureHttps = c.allowInsecureHttps,
                         deepBufferMode = c.deepBufferMode,
                         preferIpv4Dns = c.preferIpv4Dns,
-                    ))
+                        imageCacheMb = c.imageCacheMb,
+                    )
+                } else if (host.isNotBlank() && extractHost(p.serverUrl).equals(host, ignoreCase = true)) {
+                    // 同服务器下的其他账号仅同步主机级网络参数，绝不覆盖账号标识和凭据！
+                    p.copy(
+                        dynamicPortEnabled = c.dynamicPortEnabled,
+                        dynamicPortTargetDomain = c.dynamicPortTargetDomain,
+                        dynamicPortTimeoutSeconds = c.dynamicPortTimeoutSeconds,
+                        dynamicPortFetchUrl = c.dynamicPortFetchUrl,
+                        dynamicPortServiceName = c.dynamicPortServiceName,
+                        allowInsecureHttps = c.allowInsecureHttps,
+                        deepBufferMode = c.deepBufferMode,
+                        preferIpv4Dns = c.preferIpv4Dns,
+                        imageCacheMb = c.imageCacheMb,
+                    )
+                } else {
+                    p
                 }
             }
+            saveServerProfiles(updatedServers, activeProfileId = currentProfile.id)
         }
 
         _config.value = c
@@ -374,15 +371,16 @@ class AppPreferences(context: Context) {
         val newPort = (if (normalized.startsWith("http://") || normalized.startsWith("https://")) normalized else "http://$normalized").toHttpUrlOrNull()?.port
         if (host.isNotBlank() && newPort != null) {
             val servers = getSavedServers()
-            for (p in servers) {
+            val updatedServers = servers.map { p ->
                 if (extractHost(p.serverUrl).equals(host, ignoreCase = true)) {
                     val pHttp = (if (p.serverUrl.startsWith("http://") || p.serverUrl.startsWith("https://")) p.serverUrl else "http://${p.serverUrl}").toHttpUrlOrNull()
                     if (pHttp != null && pHttp.port != newPort) {
                         val newPUrl = pHttp.newBuilder().port(newPort).build().toString().trimEnd('/')
-                        saveServerProfile(p.copy(serverUrl = newPUrl))
-                    }
-                }
+                        p.copy(serverUrl = newPUrl)
+                    } else p
+                } else p
             }
+            saveServerProfiles(updatedServers)
         }
         update { it.copy(serverUrl = normalized) }
     }

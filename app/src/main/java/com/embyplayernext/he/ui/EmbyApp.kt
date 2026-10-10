@@ -275,34 +275,34 @@ fun EmbyApp(vm: EmbyViewModel = viewModel()) {
                     }
                 }
             }
-        }
-    }
 
-    if (loginVisible) {
-        LoginDialog(
-            config = config,
-            savedServers = savedServers,
-            onDismiss = { loginVisible = false },
-            onLogin = { server, user, pass -> vm.login(server, user, pass) { ok -> if (ok) loginVisible = false } },
-            onQuickSwitch = { server ->
-                vm.switchServer(server)
-                loginVisible = false
-            },
-            onDeleteServer = vm::removeServer,
-            onOpenDynamicPort = {
-                loginVisible = false
-                vm.openDynamicPort()
-            },
-            onTest = { server, onUpdate ->
-                vm.testConnection(server, onUpdate) { result ->
-                    Toast.makeText(
-                        context,
-                        result.fold({ "✓ 连接成功: $it" }, { "✗ 连接失败: ${it.message}" }),
-                        Toast.LENGTH_LONG,
-                    ).show()
-                }
-            },
-        )
+            if (loginVisible) {
+                LoginDialog(
+                    config = config,
+                    savedServers = savedServers,
+                    onDismiss = { loginVisible = false },
+                    onLogin = { server, user, pass -> vm.login(server, user, pass) { ok -> if (ok) loginVisible = false } },
+                    onQuickSwitch = { server ->
+                        vm.switchServer(server)
+                        loginVisible = false
+                    },
+                    onDeleteServer = vm::removeServer,
+                    onOpenDynamicPort = {
+                        loginVisible = false
+                        vm.openDynamicPort()
+                    },
+                    onTest = { server, onUpdate ->
+                        vm.testConnection(server, onUpdate) { result ->
+                            Toast.makeText(
+                                context,
+                                result.fold({ "✓ 连接成功: $it" }, { "✗ 连接失败: ${it.message}" }),
+                                Toast.LENGTH_LONG,
+                            ).show()
+                        }
+                    },
+                )
+            }
+        }
     }
 }
 

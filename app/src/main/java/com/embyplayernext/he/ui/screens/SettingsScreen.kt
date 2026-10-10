@@ -1,10 +1,12 @@
 package com.embyplayernext.he.ui.screens
 
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.rememberLazyListState
+import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -14,12 +16,19 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.embyplayernext.he.ui.components.tvScrollThenFocus
+import com.embyplayernext.he.EmbyApplication
 import com.embyplayernext.he.data.model.EmbyServerConfig
 import com.embyplayernext.he.data.model.SavedServerProfile
+import com.embyplayernext.he.data.network.NetworkSupport
+import com.embyplayernext.he.playback.PlayerCache
+import com.embyplayernext.he.ui.components.tvScrollThenFocus
+import com.embyplayernext.he.util.DiagnosticsLogger
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,8 +45,26 @@ fun SettingsScreen(
     onClearLog: () -> Unit,
     onBack: () -> Unit,
 ) {
+    val context = LocalContext.current
     var logoutConfirm by remember { mutableStateOf(false) }
+    var clearAllConfirm by remember { mutableStateOf(false) }
     val pageState = rememberLazyListState()
+
+    var mediaCacheSize by remember { mutableLongStateOf(0L) }
+    var imageCacheSize by remember { mutableLongStateOf(0L) }
+    var dnsCacheCount by remember { mutableIntStateOf(0) }
+    var diagLogSize by remember { mutableLongStateOf(0L) }
+
+    fun refreshCacheSizes() {
+        mediaCacheSize = PlayerCache.getSize(context)
+        imageCacheSize = EmbyApplication.getImageCacheSize(context)
+        dnsCacheCount = NetworkSupport.FastDns.cachedCount()
+        diagLogSize = DiagnosticsLogger(context).getSize()
+    }
+
+    LaunchedEffect(Unit) {
+        refreshCacheSizes()
+    }
 
     Scaffold(
         topBar = {
@@ -45,7 +72,7 @@ fun SettingsScreen(
                 title = {
                     Column {
                         Text("设置")
-                        Text("播放、显示与服务器", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("播放、显示、存储与服务器", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "返回") } },
@@ -171,13 +198,76 @@ fun SettingsScreen(
                         options = listOf(60, 120, 180, 300, 600),
                         suffix = { value -> if (value < 60) "$value 秒" else "${value / 60} 分钟" },
                     ) { onUpdate(config.copy(gestureSeekSeconds = it)) }
+                }
+            }
+
+            item {
+                SettingSection("存储与缓存管理", Icons.Default.Storage) {
+                    IntChoice(
+                        title = "视频流媒体缓存上限",
+                        current = config.cacheMb,
+                        options = listOf(0, 64, 128, 256, 512, 1024, 2048),
+                        suffix = { if (it == 0) "关闭 (0 MB)" else "$it MB" },
+                    ) { onUpdate(config.copy(cacheMb = it)) }
+                    HorizontalDivider()
+                    CacheItemRow(
+                        title = "视频流媒体磁盘缓存",
+                        subtitle = "当前占用: ${formatSize(mediaCacheSize)} · 上限: ${if (config.cacheMb == 0) "已关闭" else "${config.cacheMb} MB"}",
+                        icon = Icons.Default.VideoLibrary,
+                        onAction = {
+                            PlayerCache.clear(context)
+                            refreshCacheSizes()
+                            Toast.makeText(context, "已清空视频缓存", Toast.LENGTH_SHORT).show()
+                        }
+                    )
                     HorizontalDivider()
                     IntChoice(
-                        title = "本地磁盘缓冲",
-                        current = config.cacheMb,
-                        options = listOf(0, 64, 128, 256, 512),
-                        suffix = { if (it == 0) "关闭" else "$it MB" },
-                    ) { onUpdate(config.copy(cacheMb = it)) }
+                        title = "海报与图片缓存上限",
+                        current = config.imageCacheMb,
+                        options = listOf(0, 64, 128, 256, 512, 1024),
+                        suffix = { if (it == 0) "关闭 (0 MB)" else "$it MB" },
+                    ) { onUpdate(config.copy(imageCacheMb = it)) }
+                    HorizontalDivider()
+                    CacheItemRow(
+                        title = "海报与图片磁盘缓存",
+                        subtitle = "当前占用: ${formatSize(imageCacheSize)} · 上限: ${if (config.imageCacheMb == 0) "已关闭" else "${config.imageCacheMb} MB"}",
+                        icon = Icons.Default.Image,
+                        onAction = {
+                            EmbyApplication.clearImageCache(context)
+                            refreshCacheSizes()
+                            Toast.makeText(context, "已清空图片缓存", Toast.LENGTH_SHORT).show()
+                        }
+                    )
+                    HorizontalDivider()
+                    CacheItemRow(
+                        title = "DNS 解析缓存",
+                        subtitle = "当前缓存: $dnsCacheCount 条解析记录",
+                        icon = Icons.Default.Dns,
+                        onAction = {
+                            NetworkSupport.FastDns.clearCache()
+                            refreshCacheSizes()
+                            Toast.makeText(context, "已清空 DNS 缓存", Toast.LENGTH_SHORT).show()
+                        }
+                    )
+                    HorizontalDivider()
+                    CacheItemRow(
+                        title = "运行与诊断日志",
+                        subtitle = "当前占用: ${formatSize(diagLogSize)}",
+                        icon = Icons.Default.Description,
+                        actionText = "清空",
+                        onAction = {
+                            onClearLog()
+                            refreshCacheSizes()
+                            Toast.makeText(context, "已清空运行日志", Toast.LENGTH_SHORT).show()
+                        }
+                    )
+                    HorizontalDivider()
+                    SettingRow(
+                        title = "一键清空所有缓存",
+                        subtitle = "总计占用: ${formatSize(mediaCacheSize + imageCacheSize + diagLogSize)}",
+                        icon = Icons.Default.DeleteSweep,
+                        onClick = { clearAllConfirm = true }
+                    )
                 }
             }
 
@@ -207,11 +297,9 @@ fun SettingsScreen(
                 SettingSection("帮助与关于", Icons.Default.Info) {
                     SettingRow("导出运行日志", "将运行日志保存到下载目录", Icons.Default.Download, onExportLog)
                     HorizontalDivider()
-                    SettingRow("清除运行日志", "删除本机已记录的运行日志", Icons.Default.DeleteSweep, onClearLog)
-                    HorizontalDivider()
                     ListItem(
-                        headlineContent = { Text("EmbyPlayerNext 2.3.30") },
-                        supportingContent = { Text("Android / Android TV") },
+                        headlineContent = { Text("EmbyPlayerNext 2.3.31") },
+                        supportingContent = { Text("Android / Android TV (Build 168)") },
                         leadingContent = { Icon(Icons.Default.Info, null) },
                     )
                 }
@@ -230,6 +318,26 @@ fun SettingsScreen(
                 Button(onClick = { logoutConfirm = false; onLogout() }) { Text("退出") }
             },
             dismissButton = { TextButton(onClick = { logoutConfirm = false }) { Text("取消") } },
+        )
+    }
+
+    if (clearAllConfirm) {
+        AlertDialog(
+            onDismissRequest = { clearAllConfirm = false },
+            title = { Text("确认清空所有缓存？") },
+            text = { Text("将清空视频流媒体缓存、海报与图片缓存、DNS 缓存及运行诊断日志（总计 ${formatSize(mediaCacheSize + imageCacheSize + diagLogSize)}）。") },
+            confirmButton = {
+                Button(onClick = {
+                    clearAllConfirm = false
+                    PlayerCache.clear(context)
+                    EmbyApplication.clearImageCache(context)
+                    NetworkSupport.FastDns.clearCache()
+                    onClearLog()
+                    refreshCacheSizes()
+                    Toast.makeText(context, "已清空所有缓存", Toast.LENGTH_SHORT).show()
+                }) { Text("清空") }
+            },
+            dismissButton = { TextButton(onClick = { clearAllConfirm = false }) { Text("取消") } },
         )
     }
 }
@@ -258,6 +366,31 @@ private fun SettingRow(title: String, subtitle: String, icon: ImageVector, onCli
         trailingContent = { Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         modifier = Modifier.clickable(onClick = onClick),
+    )
+}
+
+@Composable
+private fun CacheItemRow(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    actionText: String = "清空",
+    onAction: () -> Unit,
+) {
+    ListItem(
+        headlineContent = { Text(title) },
+        supportingContent = { Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+        leadingContent = { Icon(icon, null) },
+        trailingContent = {
+            OutlinedButton(
+                onClick = onAction,
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                modifier = Modifier.height(32.dp)
+            ) {
+                Text(actionText, style = MaterialTheme.typography.labelSmall)
+            }
+        },
+        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
     )
 }
 
@@ -325,28 +458,39 @@ private fun SettingServerItem(
         shape = RoundedCornerShape(12.dp),
         color = if (isActive) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
                else MaterialTheme.colorScheme.surfaceContainerHigh,
+        border = if (isActive) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 3.dp),
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .then(if (!isActive && server.accessToken.isNotBlank()) Modifier.clickable(onClick = onSelect) else Modifier),
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Icon(
-                Icons.Default.Dns,
-                contentDescription = null,
-                tint = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(24.dp)
-            )
-            Spacer(Modifier.width(12.dp))
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .then(if (!isActive && server.accessToken.isNotBlank()) Modifier.clickable(onClick = onSelect) else Modifier)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(server.serverName, fontWeight = if (isActive) FontWeight.Bold else FontWeight.SemiBold)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        Icons.Default.AccountCircle,
+                        contentDescription = null,
+                        tint = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Text(
+                        server.username.ifBlank { "未命名用户" },
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                     if (isActive) {
                         Surface(shape = RoundedCornerShape(4.dp), color = MaterialTheme.colorScheme.primary) {
                             Text(
@@ -358,33 +502,77 @@ private fun SettingServerItem(
                             )
                         }
                     }
+                    if (server.serverName.isNotBlank() && server.serverName != "Emby Server") {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer
+                        ) {
+                            Text(
+                                server.serverName,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        }
+                    }
                 }
-                Text(
-                    "${server.username.ifBlank { "未命名用户" }} · ${server.serverUrl}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (!isActive && server.accessToken.isNotBlank()) {
+                        Button(
+                            onClick = onSelect,
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                            modifier = Modifier.height(32.dp)
+                        ) {
+                            Text("切换", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                    IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = "删除服务器",
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
+                        )
+                    }
+                }
             }
-            if (!isActive && server.accessToken.isNotBlank()) {
-                Button(
-                    onClick = onSelect,
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                    modifier = Modifier.padding(end = 4.dp)
+
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("切换")
+                    Icon(
+                        Icons.Default.Dns,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = server.serverUrl,
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
-            }
-            IconButton(onClick = onDelete) {
-                Icon(
-                    Icons.Default.Delete,
-                    contentDescription = "删除服务器",
-                    modifier = Modifier.size(20.dp),
-                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
-                )
             }
         }
     }
 }
 
+private fun formatSize(bytes: Long): String {
+    if (bytes <= 0) return "0 B"
+    val kb = bytes / 1024.0
+    if (kb < 1024.0) return String.format(Locale.US, "%.1f KB", kb)
+    val mb = kb / 1024.0
+    if (mb < 1024.0) return String.format(Locale.US, "%.1f MB", mb)
+    val gb = mb / 1024.0
+    return String.format(Locale.US, "%.2f GB", gb)
+}

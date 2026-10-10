@@ -27,13 +27,13 @@ class EmbyApiClient(
     private val listFields = "RunTimeTicks,ProductionYear,PremiereDate,DateCreated,CommunityRating,OfficialRating,MediaType,SortName,Width,Height,ImageTags,BackdropImageTags,ParentBackdropImageTags,ParentBackdropItemId,SeriesPrimaryImageTag,SeriesThumbImageTag,SeriesId,SeriesName,SeasonName,Album,AlbumArtist,Artists,IndexNumber,ParentIndexNumber,ChildCount,RecursiveItemCount,RecursiveUnplayedItemCount"
     private val detailFields = "$listFields,Overview,MediaStreams,Path,Genres,People,Taglines"
 
-    private fun authHeader(): String = "MediaBrowser Client=\"EmbyPlayerNext\", Device=\"Android\", DeviceId=\"${DeviceId.get(context)}\", Version=\"2.3.30\""
+    private fun authHeader(): String = "MediaBrowser Client=\"EmbyPlayerNext\", Device=\"Android\", DeviceId=\"${DeviceId.get(context)}\", Version=\"2.3.31\""
     private fun config() = prefs.config.value
     private fun base() = config().serverUrl.trimEnd('/')
 
     private fun requestBuilder(url: String, includeToken: Boolean = true): Request.Builder = Request.Builder().url(url)
         .header("X-Emby-Authorization", authHeader())
-        .header("User-Agent", "EmbyPlayerNext/2.3.30 Android")
+        .header("User-Agent", "EmbyPlayerNext/2.3.31 Android")
         .apply { if (includeToken && config().accessToken.isNotBlank()) header("X-Emby-Token", config().accessToken) }
 
     private suspend fun execute(requestFactory: () -> Request): String = withContext(Dispatchers.IO) {

@@ -31,6 +31,7 @@ class DiagnosticsLogger(private val context: Context) {
         }
     }
     fun clear() = runCatching { file.writeText("") }
+    fun getSize(): Long = if (file.exists()) file.length() else 0L
     @Synchronized fun exportTextFile(): Result<String> = runCatching {
         if (!file.exists()) file.writeText("No diagnostics yet.\n")
         val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())

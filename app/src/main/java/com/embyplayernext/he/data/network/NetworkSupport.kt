@@ -64,6 +64,8 @@ object NetworkSupport {
             fun clearCache() {
                 dnsCache.clear()
             }
+
+            fun cachedCount(): Int = dnsCache.size
         }
     }
 

@@ -586,12 +586,14 @@ fun PlayerScreen(
         var last = TrafficStats.getUidRxBytes(android.os.Process.myUid())
         var lastTime = System.currentTimeMillis()
         while (isActive) {
-            delay(1000)
+            delay(500)
             val now = TrafficStats.getUidRxBytes(android.os.Process.myUid())
             val nowTime = System.currentTimeMillis()
-            val bps = (now - last) * 1000.0 / (nowTime - lastTime).coerceAtLeast(1)
-            networkSpeed = if (bps >= 1024 * 1024) "%.2f MB/s".format(bps.coerceAtLeast(0.0) / 1024 / 1024)
-            else "%.0f KB/s".format(bps.coerceAtLeast(0.0) / 1024)
+            val duration = (nowTime - lastTime).coerceAtLeast(1)
+            val diff = (now - last).coerceAtLeast(0)
+            val bps = diff * 1000.0 / duration
+            networkSpeed = if (bps >= 1024 * 1024) "%.2f MB/s".format(bps / 1024.0 / 1024.0)
+            else "%.0f KB/s".format(bps / 1024.0)
             last = now
             lastTime = nowTime
         }
@@ -892,10 +894,22 @@ fun PlayerScreen(
         if (buffering && !ended) {
             Surface(
                 modifier = Modifier.align(Alignment.Center),
-                shape = CircleShape,
-                color = Color.Black.copy(alpha = .46f),
+                shape = RoundedCornerShape(18.dp),
+                color = Color.Black.copy(alpha = .65f),
             ) {
-                CircularProgressIndicator(Modifier.padding(18.dp).size(36.dp), color = Color.White, strokeWidth = 3.dp)
+                Row(
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    CircularProgressIndicator(Modifier.size(24.dp), color = Color.White, strokeWidth = 2.5.dp)
+                    Text(
+                        "缓冲中 · $networkSpeed",
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
             }
         }
 
