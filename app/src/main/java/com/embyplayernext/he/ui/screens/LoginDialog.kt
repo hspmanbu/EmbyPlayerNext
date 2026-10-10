@@ -6,9 +6,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.SettingsEthernet
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,7 +28,8 @@ fun LoginDialog(
     onLogin: (String, String, String) -> Unit,
     onQuickSwitch: (SavedServerProfile) -> Unit = {},
     onDeleteServer: (String) -> Unit = {},
-    onTest: (String) -> Unit,
+    onOpenDynamicPort: () -> Unit = {},
+    onTest: (String, (String) -> Unit) -> Unit,
 ) {
     var server by remember { mutableStateOf(if (savedServers.isEmpty()) config.serverUrl else "") }
     var user by remember { mutableStateOf(if (savedServers.isEmpty()) config.username else "") }
@@ -37,9 +38,24 @@ fun LoginDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Default.Dns, null, tint = MaterialTheme.colorScheme.primary)
-                Text(if (savedServers.isEmpty()) "连接 Emby 服务器" else "服务器与账号管理")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.Dns, null, tint = MaterialTheme.colorScheme.primary)
+                    Text(if (savedServers.isEmpty()) "连接 Emby 服务器" else "服务器与账号管理", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                OutlinedButton(
+                    onClick = onOpenDynamicPort,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                    modifier = Modifier.height(32.dp)
+                ) {
+                    Icon(Icons.Default.SettingsEthernet, null, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("动态端口", style = MaterialTheme.typography.labelSmall)
+                }
             }
         },
         text = {
@@ -53,7 +69,7 @@ fun LoginDialog(
                     Text("已保存的服务器及账号", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         savedServers.forEach { s ->
-                            val isActive = s.serverUrl.trimEnd('/') == config.serverUrl.trimEnd('/') && s.username == config.username
+                            val isActive = s.serverUrl.trimEnd('/') == config.serverUrl.trimEnd('/') && s.username.equals(config.username, ignoreCase = true)
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
                                 color = if (isActive) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
@@ -69,10 +85,8 @@ fun LoginDialog(
                                             .weight(1f)
                                             .clickable {
                                                 server = s.serverUrl
-                                                user = s.username
-                                                if (s.accessToken.isNotBlank() && !isActive) {
-                                                    onQuickSwitch(s)
-                                                }
+                                                user = ""
+                                                pass = ""
                                             }
                                     ) {
                                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -84,7 +98,7 @@ fun LoginDialog(
                                             }
                                         }
                                         Text(
-                                            "${s.username.ifBlank { "未命名用户" }} · ${s.serverUrl}",
+                                            "账号: ${s.username.ifBlank { "未命名" }} · ${s.serverUrl}",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             maxLines = 1,
@@ -100,6 +114,16 @@ fun LoginDialog(
                                             Text("切换")
                                         }
                                     }
+                                    TextButton(
+                                        onClick = {
+                                            server = s.serverUrl
+                                            user = ""
+                                            pass = ""
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                    ) {
+                                        Text("填入地址", style = MaterialTheme.typography.labelSmall)
+                                    }
                                     IconButton(onClick = { onDeleteServer(s.id) }) {
                                         Icon(Icons.Default.Delete, "删除", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f))
                                     }
@@ -108,13 +132,14 @@ fun LoginDialog(
                         }
                     }
                     HorizontalDivider(Modifier.padding(vertical = 4.dp))
-                    Text("添加新服务器 / 重新登录", style = MaterialTheme.typography.labelLarge)
+                    Text("添加新账号 / 登录新服务器", style = MaterialTheme.typography.labelLarge)
                 }
 
                 OutlinedTextField(
                     value = server,
                     onValueChange = { server = it },
                     label = { Text("服务器地址 (如 http://192.168.1.100:8096)") },
+                    supportingText = { Text("若配置了动态端口，首次连接失败时将自动抓取最新端口重连") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -133,8 +158,25 @@ fun LoginDialog(
                     visualTransformation = PasswordVisualTransformation(),
                     modifier = Modifier.fillMaxWidth()
                 )
-                TextButton(onClick = { onTest(server) }) {
-                    Text("测试服务器联通性")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = {
+                        onTest(server) { updatedUrl ->
+                            server = updatedUrl
+                        }
+                    }) {
+                        Text("测试服务器联通性")
+                    }
+                    if (config.dynamicPortEnabled || config.dynamicPortFetchUrl.isNotBlank()) {
+                        Text(
+                            "已启用动态端口自动匹配",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
         },

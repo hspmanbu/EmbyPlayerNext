@@ -62,7 +62,7 @@ fun SettingsScreen(
                 SettingSection("服务器与多账号管理", Icons.Default.Dns) {
                     if (savedServers.isNotEmpty()) {
                         savedServers.forEach { server ->
-                            val isActive = server.serverUrl.trimEnd('/') == config.serverUrl.trimEnd('/') && server.username == config.username
+                            val isActive = server.serverUrl.trimEnd('/') == config.serverUrl.trimEnd('/') && server.username.equals(config.username, ignoreCase = true)
                             SettingServerItem(
                                 server = server,
                                 isActive = isActive,

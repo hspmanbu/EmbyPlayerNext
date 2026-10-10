@@ -161,8 +161,8 @@ class EmbyViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun testConnection(server: String, done: (Result<String>) -> Unit) {
-        viewModelScope.launch { done(api.testConnection(server)) }
+    fun testConnection(server: String, onUpdatedUrl: ((String) -> Unit)? = null, done: (Result<String>) -> Unit) {
+        viewModelScope.launch { done(api.testConnection(server, onUpdatedUrl)) }
     }
 
     fun logout() {
@@ -582,9 +582,8 @@ class EmbyViewModel(app: Application) : AndroidViewModel(app) {
             _message.value = "删除失败: 无效的媒体ID"
             return@launchBusy
         }
-        val safeTypes = setOf("Movie", "Episode", "Video", "Audio", "MusicVideo", "Trailer")
-        if (item.isFolder || item.type !in safeTypes) {
-            _message.value = "安全防护：客户端仅允许删除单个媒体文件，禁止删除文件夹或整部剧集"
+        if (item.type == "UserView") {
+            _message.value = "不能在客户端删除媒体库根视图"
             return@launchBusy
         }
         runCatching { api.deleteItem(item.id) }.onSuccess {

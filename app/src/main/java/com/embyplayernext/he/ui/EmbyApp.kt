@@ -289,8 +289,12 @@ fun EmbyApp(vm: EmbyViewModel = viewModel()) {
                 loginVisible = false
             },
             onDeleteServer = vm::removeServer,
-            onTest = { server ->
-                vm.testConnection(server) { result ->
+            onOpenDynamicPort = {
+                loginVisible = false
+                vm.openDynamicPort()
+            },
+            onTest = { server, onUpdate ->
+                vm.testConnection(server, onUpdate) { result ->
                     Toast.makeText(
                         context,
                         result.fold({ "✓ 连接成功: $it" }, { "✗ 连接失败: ${it.message}" }),

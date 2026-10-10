@@ -95,24 +95,84 @@ class EmbyApiClient(
         }
     }
 
-    suspend fun testConnection(serverUrl: String? = null): Result<String> = runCatching {
-        val normalized = (serverUrl ?: base()).trim().trimEnd('/')
-        require(normalized.isNotBlank()) { "服务器地址不能为空" }
-        val candidate = config().copy(serverUrl = normalized)
-        val body = executeDirect(candidate) {
-            requestBuilder("$normalized/System/Info/Public", includeToken = false).get().build()
+    suspend fun testConnection(serverUrl: String? = null, onUpdatedUrl: ((String) -> Unit)? = null): Result<String> = runCatching {
+        var rawUrl = (serverUrl ?: base()).trim().trimEnd('/')
+        require(rawUrl.isNotBlank()) { "服务器地址不能为空" }
+        var normalized = if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) rawUrl else "http://$rawUrl"
+        val c = config()
+        var candidate = c.copy(serverUrl = normalized)
+        var updatedPort: Int? = null
+        val body = try {
+            executeDirect(candidate) {
+                requestBuilder("$normalized/System/Info/Public", includeToken = false).get().build()
+            }
+        } catch (first: Throwable) {
+            if (dynamicResolver.matchesDynamicPort(normalized, c)) {
+                logger.log("DynamicPort", "测试连接失败(${first.message})，符合动态端口配置，自动拉取最新端口...")
+                val portResult = dynamicResolver.fetchPort(
+                    fetchUrl = c.dynamicPortFetchUrl,
+                    serviceName = c.dynamicPortServiceName,
+                    timeoutSeconds = c.dynamicPortTimeoutSeconds,
+                    allowInsecureHttps = c.allowInsecureHttps,
+                )
+                if (portResult.isSuccess) {
+                    val port = portResult.getOrThrow()
+                    updatedPort = port
+                    normalized = dynamicResolver.replacePort(normalized, port)
+                    candidate = candidate.copy(serverUrl = normalized)
+                    onUpdatedUrl?.invoke(normalized)
+                    logger.log("DynamicPort", "使用拉取的动态端口重新测试连接: $normalized")
+                    executeDirect(candidate) {
+                        requestBuilder("$normalized/System/Info/Public", includeToken = false).get().build()
+                    }
+                } else {
+                    throw first
+                }
+            } else {
+                throw first
+            }
         }
-        JSONObject(body).optString("ServerName", "Emby Server")
+        val sName = JSONObject(body).optString("ServerName", "Emby Server")
+        if (updatedPort != null) "$sName (已自动识别并切换为动态端口: $updatedPort)" else sName
     }
 
     suspend fun login(serverUrl: String, username: String, password: String): Result<EmbyServerConfig> = runCatching {
-        val normalized = serverUrl.trim().trimEnd('/')
-        require(normalized.isNotBlank()) { "服务器地址不能为空" }
-        val candidate = config().copy(serverUrl = normalized, username = username)
+        var rawUrl = serverUrl.trim().trimEnd('/')
+        require(rawUrl.isNotBlank()) { "服务器地址不能为空" }
+        var normalized = if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) rawUrl else "http://$rawUrl"
+        val c = config()
+        var candidate = c.copy(serverUrl = normalized, username = username)
         val payload = JSONObject().put("Username", username).put("Pw", password)
-        val body = executeDirect(candidate) {
-            requestBuilder("$normalized/Users/AuthenticateByName", includeToken = false)
-                .post(payload.toString().toRequestBody(jsonType)).build()
+        var body: String
+        try {
+            body = executeDirect(candidate) {
+                requestBuilder("$normalized/Users/AuthenticateByName", includeToken = false)
+                    .post(payload.toString().toRequestBody(jsonType)).build()
+            }
+        } catch (first: Throwable) {
+            if (dynamicResolver.matchesDynamicPort(normalized, c)) {
+                logger.log("DynamicPort", "登录首次连接失败(${first.message})，符合动态端口配置，自动拉取最新端口...")
+                val portResult = dynamicResolver.fetchPort(
+                    fetchUrl = c.dynamicPortFetchUrl,
+                    serviceName = c.dynamicPortServiceName,
+                    timeoutSeconds = c.dynamicPortTimeoutSeconds,
+                    allowInsecureHttps = c.allowInsecureHttps,
+                )
+                if (portResult.isSuccess) {
+                    val port = portResult.getOrThrow()
+                    normalized = dynamicResolver.replacePort(normalized, port)
+                    candidate = candidate.copy(serverUrl = normalized)
+                    logger.log("DynamicPort", "使用拉取的动态端口重新登录: $normalized")
+                    body = executeDirect(candidate) {
+                        requestBuilder("$normalized/Users/AuthenticateByName", includeToken = false)
+                            .post(payload.toString().toRequestBody(jsonType)).build()
+                    }
+                } else {
+                    throw first
+                }
+            } else {
+                throw first
+            }
         }
         val root = JSONObject(body)
         val user = root.getJSONObject("User")

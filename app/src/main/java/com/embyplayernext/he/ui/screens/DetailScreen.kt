@@ -170,7 +170,7 @@ fun DetailScreen(
                                 isTv = isTv,
                                 onClick = onPlayed,
                             )
-                            val canDelete = !item.isFolder && item.type in setOf("Movie", "Episode", "Video", "Audio", "MusicVideo", "Trailer")
+                            val canDelete = item.id.isNotBlank() && item.type != "UserView"
                             if (canDelete) {
                                 DetailPill(
                                     text = "删除",
@@ -366,16 +366,19 @@ fun DetailScreen(
     }
 
     if (deleteConfirm) {
-        val typeLabel = when (item.type) {
-            "Movie" -> "电影"
-            "Episode" -> "剧集单集"
-            "Audio" -> "音频"
-            else -> "媒体文件"
+        val (typeLabel, warningText) = when (item.type) {
+            "Series" -> "整部剧集" to "确定要从服务器彻底删除整部剧集《${item.name}》吗？\n\n【高危操作】这将从服务端磁盘永久删除该剧集目录下的所有季度、单集视频及元数据文件，且无法撤销！"
+            "Season" -> "整季" to "确定要从服务器彻底删除《${item.name}》整季吗？\n\n【高危操作】这将从服务端磁盘永久删除该季度的所有单集视频文件，且无法撤销！"
+            "Folder", "CollectionFolder", "BoxSet" -> "文件夹/合集" to "确定要从服务器彻底删除文件夹《${item.name}》吗？\n\n【高危操作】这将从服务端磁盘永久删除该文件夹/合集下的全部内容，且无法撤销！"
+            "Episode" -> "剧集单集" to "确定要从服务器删除单集《${item.name}》吗？\n\n此操作会永久删除服务端对应的视频文件，且无法撤销。"
+            "Movie" -> "电影" to "确定要从服务器删除电影《${item.name}》吗？\n\n此操作会永久删除服务端对应的媒体文件，且无法撤销。"
+            "Audio" -> "音频" to "确定要从服务器删除音频《${item.name}》吗？\n\n此操作会永久删除服务端对应的音频文件，且无法撤销。"
+            else -> "媒体项目" to "确定要从服务器删除《${item.name}》吗？\n\n此操作可能会永久删除服务端对应的文件或目录，且无法撤销。"
         }
         AlertDialog(
             onDismissRequest = { deleteConfirm = false },
             title = { Text("删除$typeLabel") },
-            text = { Text("确定要从服务器删除${typeLabel}《${item.name}》吗？\n\n此操作会永久删除服务端对应的媒体文件，且无法撤销。") },
+            text = { Text(warningText) },
             confirmButton = {
                 Button(
                     onClick = {

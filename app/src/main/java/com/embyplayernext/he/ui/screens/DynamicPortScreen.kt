@@ -24,7 +24,12 @@ fun DynamicPortScreen(config:EmbyServerConfig,status:DynamicPortStatus,onBack:()
             OutlinedTextField(c.dynamicPortTimeoutSeconds.toString(),{v->v.toIntOrNull()?.let{c=c.copy(dynamicPortTimeoutSeconds=it.coerceIn(2,60))}},label={Text("连接超时时间阈值 (秒)")},modifier=Modifier.fillMaxWidth())
             Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) { Button(onClick={onSave(c)}){Text("保存动态端口配置")};OutlinedButton(onClick=onTest){Text("立即拉取并测试")}}
             when(status){DynamicPortStatus.Idle->Unit;DynamicPortStatus.Resolving->Text("正在拉取并解析端口...");is DynamicPortStatus.Success->Text("✓ 拉取成功！解析端口: ${status.port}",color=MaterialTheme.colorScheme.primary);is DynamicPortStatus.Error->Text("✗ 拉取失败: ${status.message}",color=MaterialTheme.colorScheme.error)}
-            HorizontalDivider();Text("当前服务器地址: ${c.serverUrl}",style=MaterialTheme.typography.bodySmall)
+            HorizontalDivider()
+            if (c.serverUrl.isNotBlank()) {
+                Text("当前服务器地址: ${c.serverUrl}", style = MaterialTheme.typography.bodySmall)
+            } else {
+                Text("当前未连接服务器（端口配置保存后，添加匹配服务器时将在首次连接时自动生效）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            }
         }
     }
 }

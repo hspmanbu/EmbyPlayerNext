@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.json.JSONArray
 import org.json.JSONObject
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 class AppPreferences(context: Context) {
     private val appContext = context.applicationContext
@@ -110,9 +111,14 @@ class AppPreferences(context: Context) {
         }.getOrDefault(emptyList())
     }
 
+    fun extractHost(url: String): String {
+        val normalized = if (url.startsWith("http://") || url.startsWith("https://")) url else "http://$url"
+        return normalized.toHttpUrlOrNull()?.host.orEmpty()
+    }
+
     fun saveServerProfile(profile: SavedServerProfile) {
         val current = getSavedServers().filterNot {
-            it.id == profile.id || (it.serverUrl.trimEnd('/') == profile.serverUrl.trimEnd('/') && it.username == profile.username)
+            it.id == profile.id || (it.serverUrl.trimEnd('/') == profile.serverUrl.trimEnd('/') && it.username.equals(profile.username, ignoreCase = true))
         }
         val target = profile.copy(lastConnected = if (profile.lastConnected > 0) profile.lastConnected else System.currentTimeMillis())
         val updated = (listOf(target) + current).sortedByDescending { it.lastConnected }
@@ -151,13 +157,39 @@ class AppPreferences(context: Context) {
         val normalizedUrl = serverUrl.trim().trimEnd('/')
         val currentServers = getSavedServers()
         val existing = currentServers.firstOrNull {
-            it.serverUrl.trimEnd('/') == normalizedUrl && it.username == username
+            it.serverUrl.trimEnd('/') == normalizedUrl && it.username.equals(username, ignoreCase = true)
         }
+        val sameServerAnotherAccount = currentServers.firstOrNull {
+            val h1 = extractHost(it.serverUrl)
+            val h2 = extractHost(normalizedUrl)
+            h1.isNotBlank() && h1.equals(h2, ignoreCase = true)
+        }
+        val globalConfig = _config.value
         val profileId = existing?.id ?: java.util.UUID.randomUUID().toString()
-        val newProfile = (existing ?: SavedServerProfile(id = profileId, serverUrl = normalizedUrl, username = username)).copy(
+        val defaultDynamicPortEnabled = sameServerAnotherAccount?.dynamicPortEnabled ?: globalConfig.dynamicPortEnabled
+        val defaultDynamicDomain = (sameServerAnotherAccount?.dynamicPortTargetDomain ?: globalConfig.dynamicPortTargetDomain).ifBlank { extractHost(normalizedUrl) }
+        val defaultDynamicTimeout = sameServerAnotherAccount?.dynamicPortTimeoutSeconds ?: globalConfig.dynamicPortTimeoutSeconds
+        val defaultDynamicFetchUrl = sameServerAnotherAccount?.dynamicPortFetchUrl ?: globalConfig.dynamicPortFetchUrl
+        val defaultDynamicServiceName = sameServerAnotherAccount?.dynamicPortServiceName ?: globalConfig.dynamicPortServiceName
+        val defaultInsecure = sameServerAnotherAccount?.allowInsecureHttps ?: globalConfig.allowInsecureHttps
+        val resolvedServerName = serverName.ifBlank {
+            existing?.serverName ?: sameServerAnotherAccount?.serverName ?: "Emby Server"
+        }
+
+        val newProfile = (existing ?: SavedServerProfile(
             id = profileId,
             serverUrl = normalizedUrl,
-            serverName = serverName.ifBlank { existing?.serverName ?: "Emby Server" },
+            username = username,
+            dynamicPortEnabled = defaultDynamicPortEnabled,
+            dynamicPortTargetDomain = defaultDynamicDomain,
+            dynamicPortTimeoutSeconds = defaultDynamicTimeout,
+            dynamicPortFetchUrl = defaultDynamicFetchUrl,
+            dynamicPortServiceName = defaultDynamicServiceName,
+            allowInsecureHttps = defaultInsecure,
+        )).copy(
+            id = profileId,
+            serverUrl = normalizedUrl,
+            serverName = resolvedServerName,
             username = username,
             userId = userId,
             accessToken = accessToken,
@@ -292,12 +324,44 @@ class AppPreferences(context: Context) {
                 allowInsecureHttps = c.allowInsecureHttps,
             )
             saveServerProfile(updated)
+
+            val host = extractHost(c.serverUrl)
+            if (host.isNotBlank()) {
+                val others = getSavedServers().filter { it.id != updated.id && extractHost(it.serverUrl).equals(host, ignoreCase = true) }
+                for (other in others) {
+                    saveServerProfile(other.copy(
+                        dynamicPortEnabled = c.dynamicPortEnabled,
+                        dynamicPortTargetDomain = c.dynamicPortTargetDomain,
+                        dynamicPortTimeoutSeconds = c.dynamicPortTimeoutSeconds,
+                        dynamicPortFetchUrl = c.dynamicPortFetchUrl,
+                        dynamicPortServiceName = c.dynamicPortServiceName,
+                        allowInsecureHttps = c.allowInsecureHttps,
+                    ))
+                }
+            }
         }
 
         _config.value = c
     }
 
-    fun updateServerPort(serverUrl: String) = update { it.copy(serverUrl = serverUrl) }
+    fun updateServerPort(serverUrl: String) {
+        val normalized = serverUrl.trim().trimEnd('/')
+        val host = extractHost(normalized)
+        val newPort = (if (normalized.startsWith("http://") || normalized.startsWith("https://")) normalized else "http://$normalized").toHttpUrlOrNull()?.port
+        if (host.isNotBlank() && newPort != null) {
+            val servers = getSavedServers()
+            for (p in servers) {
+                if (extractHost(p.serverUrl).equals(host, ignoreCase = true)) {
+                    val pHttp = (if (p.serverUrl.startsWith("http://") || p.serverUrl.startsWith("https://")) p.serverUrl else "http://${p.serverUrl}").toHttpUrlOrNull()
+                    if (pHttp != null && pHttp.port != newPort) {
+                        val newPUrl = pHttp.newBuilder().port(newPort).build().toString().trimEnd('/')
+                        saveServerProfile(p.copy(serverUrl = newPUrl))
+                    }
+                }
+            }
+        }
+        update { it.copy(serverUrl = normalized) }
+    }
     fun clearLogin() {
         val activeId = prefs.getString("active_server_id", null)
         if (activeId != null) {
