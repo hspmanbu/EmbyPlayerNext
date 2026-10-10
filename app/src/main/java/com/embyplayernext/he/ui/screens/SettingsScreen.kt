@@ -184,6 +184,18 @@ fun SettingsScreen(
             item {
                 SettingSection("网络与兼容性", Icons.Default.NetworkCheck) {
                     SwitchRow(
+                        "弱网深度缓冲模式",
+                        "增大视频预加载时长与重缓冲门限，平滑网络抖动并减少频繁卡顿",
+                        config.deepBufferMode,
+                    ) { onUpdate(config.copy(deepBufferMode = it)) }
+                    HorizontalDivider()
+                    SwitchRow(
+                        "IPv4 优先解析",
+                        "优先解析 IPv4 地址并启用 DNS 缓存，规避部分网络/电视盒子 IPv6 超时黑洞",
+                        config.preferIpv4Dns,
+                    ) { onUpdate(config.copy(preferIpv4Dns = it)) }
+                    HorizontalDivider()
+                    SwitchRow(
                         "允许自签名 HTTPS",
                         "仅在你明确使用家庭自签名证书时开启",
                         config.allowInsecureHttps,
@@ -198,7 +210,7 @@ fun SettingsScreen(
                     SettingRow("清除运行日志", "删除本机已记录的运行日志", Icons.Default.DeleteSweep, onClearLog)
                     HorizontalDivider()
                     ListItem(
-                        headlineContent = { Text("EmbyPlayerNext 2.3.29") },
+                        headlineContent = { Text("EmbyPlayerNext 2.3.30") },
                         supportingContent = { Text("Android / Android TV") },
                         leadingContent = { Icon(Icons.Default.Info, null) },
                     )

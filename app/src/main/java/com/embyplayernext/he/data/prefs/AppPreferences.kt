@@ -36,6 +36,8 @@ class AppPreferences(context: Context) {
                 dynamicPortFetchUrl = prefs.getString("dynamic_port_fetch_url", "") ?: "",
                 dynamicPortServiceName = prefs.getString("dynamic_port_service_name", "") ?: "",
                 allowInsecureHttps = prefs.getBoolean("allow_insecure_https", false),
+                deepBufferMode = prefs.getBoolean("deep_buffer_mode", false),
+                preferIpv4Dns = prefs.getBoolean("prefer_ipv4_dns", true),
             )
             saveServerProfile(initial)
             initial
@@ -64,6 +66,8 @@ class AppPreferences(context: Context) {
             autoPlayNextEpisode = prefs.getBoolean("auto_play_next_episode", true),
             rememberPlaybackSpeed = prefs.getBoolean("remember_playback_speed", true),
             lastPlaybackSpeed = safeFloat("last_playback_speed", 1.0f),
+            deepBufferMode = effectiveServer?.deepBufferMode ?: prefs.getBoolean("deep_buffer_mode", false),
+            preferIpv4Dns = effectiveServer?.preferIpv4Dns ?: prefs.getBoolean("prefer_ipv4_dns", true),
         )
     }.getOrElse {
         EmbyServerConfig(uiScale = defaultUiScale())
@@ -106,6 +110,8 @@ class AppPreferences(context: Context) {
                     dynamicPortFetchUrl = o.optString("dynamicPortFetchUrl"),
                     dynamicPortServiceName = o.optString("dynamicPortServiceName"),
                     allowInsecureHttps = o.optBoolean("allowInsecureHttps", false),
+                    deepBufferMode = o.optBoolean("deepBufferMode", false),
+                    preferIpv4Dns = o.optBoolean("preferIpv4Dns", true),
                 )
             }.sortedByDescending { it.lastConnected }
         }.getOrDefault(emptyList())
@@ -139,6 +145,8 @@ class AppPreferences(context: Context) {
                     .put("dynamicPortFetchUrl", p.dynamicPortFetchUrl)
                     .put("dynamicPortServiceName", p.dynamicPortServiceName)
                     .put("allowInsecureHttps", p.allowInsecureHttps)
+                    .put("deepBufferMode", p.deepBufferMode)
+                    .put("preferIpv4Dns", p.preferIpv4Dns)
             )
         }
         prefs.edit()
@@ -172,6 +180,8 @@ class AppPreferences(context: Context) {
         val defaultDynamicFetchUrl = sameServerAnotherAccount?.dynamicPortFetchUrl ?: globalConfig.dynamicPortFetchUrl
         val defaultDynamicServiceName = sameServerAnotherAccount?.dynamicPortServiceName ?: globalConfig.dynamicPortServiceName
         val defaultInsecure = sameServerAnotherAccount?.allowInsecureHttps ?: globalConfig.allowInsecureHttps
+        val defaultDeepBuffer = sameServerAnotherAccount?.deepBufferMode ?: globalConfig.deepBufferMode
+        val defaultPreferIpv4 = sameServerAnotherAccount?.preferIpv4Dns ?: globalConfig.preferIpv4Dns
         val resolvedServerName = serverName.ifBlank {
             existing?.serverName ?: sameServerAnotherAccount?.serverName ?: "Emby Server"
         }
@@ -186,6 +196,8 @@ class AppPreferences(context: Context) {
             dynamicPortFetchUrl = defaultDynamicFetchUrl,
             dynamicPortServiceName = defaultDynamicServiceName,
             allowInsecureHttps = defaultInsecure,
+            deepBufferMode = defaultDeepBuffer,
+            preferIpv4Dns = defaultPreferIpv4,
         )).copy(
             id = profileId,
             serverUrl = normalizedUrl,
@@ -209,6 +221,8 @@ class AppPreferences(context: Context) {
             dynamicPortFetchUrl = newProfile.dynamicPortFetchUrl,
             dynamicPortServiceName = newProfile.dynamicPortServiceName,
             allowInsecureHttps = newProfile.allowInsecureHttps,
+            deepBufferMode = newProfile.deepBufferMode,
+            preferIpv4Dns = newProfile.preferIpv4Dns,
         )
         applyConfigToSharedPreferences(updated)
         _config.value = updated
@@ -234,6 +248,8 @@ class AppPreferences(context: Context) {
                     .put("dynamicPortFetchUrl", p.dynamicPortFetchUrl)
                     .put("dynamicPortServiceName", p.dynamicPortServiceName)
                     .put("allowInsecureHttps", p.allowInsecureHttps)
+                    .put("deepBufferMode", p.deepBufferMode)
+                    .put("preferIpv4Dns", p.preferIpv4Dns)
             )
         }
         val editor = prefs.edit().putString("saved_server_profiles", arr.toString())
@@ -267,6 +283,8 @@ class AppPreferences(context: Context) {
             dynamicPortFetchUrl = updatedTarget.dynamicPortFetchUrl,
             dynamicPortServiceName = updatedTarget.dynamicPortServiceName,
             allowInsecureHttps = updatedTarget.allowInsecureHttps,
+            deepBufferMode = updatedTarget.deepBufferMode,
+            preferIpv4Dns = updatedTarget.preferIpv4Dns,
         )
         applyConfigToSharedPreferences(updated)
         _config.value = updated
@@ -297,6 +315,8 @@ class AppPreferences(context: Context) {
             .putBoolean("auto_play_next_episode", c.autoPlayNextEpisode)
             .putBoolean("remember_playback_speed", c.rememberPlaybackSpeed)
             .putFloat("last_playback_speed", c.lastPlaybackSpeed)
+            .putBoolean("deep_buffer_mode", c.deepBufferMode)
+            .putBoolean("prefer_ipv4_dns", c.preferIpv4Dns)
             .apply()
     }
 
@@ -322,6 +342,8 @@ class AppPreferences(context: Context) {
                 dynamicPortFetchUrl = c.dynamicPortFetchUrl,
                 dynamicPortServiceName = c.dynamicPortServiceName,
                 allowInsecureHttps = c.allowInsecureHttps,
+                deepBufferMode = c.deepBufferMode,
+                preferIpv4Dns = c.preferIpv4Dns,
             )
             saveServerProfile(updated)
 
@@ -336,6 +358,8 @@ class AppPreferences(context: Context) {
                         dynamicPortFetchUrl = c.dynamicPortFetchUrl,
                         dynamicPortServiceName = c.dynamicPortServiceName,
                         allowInsecureHttps = c.allowInsecureHttps,
+                        deepBufferMode = c.deepBufferMode,
+                        preferIpv4Dns = c.preferIpv4Dns,
                     ))
                 }
             }

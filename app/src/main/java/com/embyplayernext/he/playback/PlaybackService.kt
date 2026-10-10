@@ -24,6 +24,8 @@ import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
+import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.video.VideoFrameMetadataListener
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
@@ -110,24 +112,63 @@ class PlaybackService : MediaSessionService() {
             }
 
         val lowRam = (getSystemService(ACTIVITY_SERVICE) as? ActivityManager)?.isLowRamDevice == true
+        val deepBuffer = config.deepBufferMode
+        val minBufferMs = when {
+            lowRam -> 10_000
+            deepBuffer -> 30_000
+            else -> 20_000
+        }
+        val maxBufferMs = when {
+            lowRam -> 40_000
+            deepBuffer -> 120_000
+            else -> 90_000
+        }
+        val bufferForPlaybackMs = when {
+            deepBuffer -> 1_000
+            else -> 500
+        }
+        val bufferForPlaybackAfterRebufferMs = when {
+            deepBuffer -> 6_000
+            lowRam -> 3_500
+            else -> 4_000
+        }
+        val backBufferDurationMs = if (lowRam) 15_000 else 30_000
+
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                if (lowRam) 8_000 else 15_000,
-                if (lowRam) 30_000 else 60_000,
-                1_000,
-                2_500,
+                minBufferMs,
+                maxBufferMs,
+                bufferForPlaybackMs,
+                bufferForPlaybackAfterRebufferMs,
+            )
+            .setBackBuffer(
+                backBufferDurationMs,
+                /* retainBackBufferFromKeyframe = */ true,
             )
             .setPrioritizeTimeOverSizeThresholds(true)
+            .setTargetBufferBytes(
+                if (lowRam) 32 * 1024 * 1024
+                else if (deepBuffer) 128 * 1024 * 1024
+                else 64 * 1024 * 1024
+            )
             .build()
+
+        val bandwidthMeter = DefaultBandwidthMeter.Builder(this)
+            .setResetOnNetworkTypeChange(true)
+            .build()
+
         val upstream = OkHttpDataSource.Factory(NetworkSupport.mediaClient(config, if (config.dynamicPortEnabled) config.dynamicPortTimeoutSeconds else 15))
-            .setUserAgent("EmbyPlayerNext/2.3.29")
+            .setUserAgent("EmbyPlayerNext/2.3.30")
+            .setTransferListener(bandwidthMeter)
         val cacheFactory = if (config.cacheMb > 0) {
             CacheDataSource.Factory()
                 .setCache(PlayerCache.get(this, config.cacheMb))
                 .setUpstreamDataSourceFactory(upstream)
                 .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
         } else null
+        val retryPolicy = DefaultLoadErrorHandlingPolicy(if (deepBuffer) 6 else 4)
         val mediaSourceFactory = DefaultMediaSourceFactory(cacheFactory ?: upstream)
+            .setLoadErrorHandlingPolicy(retryPolicy)
         val trackSelector = DefaultTrackSelector(this).apply {
             if (hybridDirectVideoEnabled) {
                 parameters = buildUponParameters()
@@ -154,6 +195,7 @@ class PlaybackService : MediaSessionService() {
             .setTrackSelector(trackSelector)
             .setMediaSourceFactory(mediaSourceFactory)
             .setLoadControl(loadControl)
+            .setBandwidthMeter(bandwidthMeter)
             .build().apply {
                 setAudioAttributes(AudioAttributes.DEFAULT, true)
                 repeatMode = Player.REPEAT_MODE_OFF

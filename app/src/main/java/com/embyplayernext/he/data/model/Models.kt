@@ -23,6 +23,8 @@ data class EmbyServerConfig(
     val autoPlayNextEpisode: Boolean = true,
     val rememberPlaybackSpeed: Boolean = true,
     val lastPlaybackSpeed: Float = 1.0f,
+    val deepBufferMode: Boolean = false,
+    val preferIpv4Dns: Boolean = true,
 )
 
 data class SavedServerProfile(
@@ -39,6 +41,8 @@ data class SavedServerProfile(
     val dynamicPortFetchUrl: String = "",
     val dynamicPortServiceName: String = "",
     val allowInsecureHttps: Boolean = false,
+    val deepBufferMode: Boolean = false,
+    val preferIpv4Dns: Boolean = true,
 )
 
 data class UserDataItem(

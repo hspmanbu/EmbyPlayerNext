@@ -445,10 +445,11 @@ fun PlayerScreen(
                 else -> 18_000L
             }
 
-            // As long as the player is buffering/loading data and making progress, grant up to 45s of total grace
+            // As long as the player is buffering/loading data and making progress, grant up to 45s (or 75s in deepBufferMode) of total grace
             val isBufferingProgressing = (player.playbackState == Player.STATE_BUFFERING || player.isLoading) &&
                 (now - lastBufferProgressRealtimeMs < 10_000L || bufferedPos > 0)
-            if (isBufferingProgressing && elapsed < 45_000L) {
+            val maxBufferingGraceMs = if (config.deepBufferMode) 75_000L else 45_000L
+            if (isBufferingProgressing && elapsed < maxBufferingGraceMs) {
                 noFirstFrameClockStart = now
             }
 
